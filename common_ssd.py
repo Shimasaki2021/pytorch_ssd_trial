@@ -230,5 +230,7 @@ class SSDModel:
 
         return
 
-
+def makeVocClassesTxtFpath(weight_fpath:str) -> str:
+    voc_classes_fpath = f"./weights/{os.path.splitext(os.path.basename(weight_fpath))[0]}_classes.txt"
+    return voc_classes_fpath
 

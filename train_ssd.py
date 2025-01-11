@@ -16,7 +16,7 @@ import torchvision
 
 from utils.ssd_model import SSD, MultiBoxLoss
 
-from common_ssd import SSDModel, VocDataSetMng
+from common_ssd import SSDModel, VocDataSetMng, makeVocClassesTxtFpath
 
 
 class SSDModelTrainerDebug:
@@ -222,7 +222,7 @@ class SSDModelTrainer(SSDModel):
             if min_loss > epoch_val_loss:
                 min_loss          = epoch_val_loss
                 epoch_at_min_loss = epoch
-                torch.save(self.net_.state_dict(), res_weight_fpath)
+                self.saveWeight(res_weight_fpath)
 
             epoch_train_loss = 0.0  # epochの損失和
             epoch_val_loss   = 0.0  # epochの損失和
@@ -231,6 +231,21 @@ class SSDModelTrainer(SSDModel):
         debug_train.outputLogSummary(self.device_.type, voc_dataset.data_path_, epoch_at_min_loss, min_loss)
         debug_train.outputLogDataSetSummary(voc_dataset)
         debug_train.closeLogFile()
+
+        return
+    
+    def saveWeight(self, weight_fpath:str):
+        # ネットワーク重みをセーブ
+        torch.save(self.net_.state_dict(), weight_fpath) 
+
+        # クラス名リスト（voc_classes）をセーブ
+        voc_classes_fpath = makeVocClassesTxtFpath(weight_fpath)
+
+        voc_classes_fp = open(voc_classes_fpath,"w")
+        if voc_classes_fp is not None:
+            for cls_name in self.voc_classes_:
+                voc_classes_fp.write(f"{cls_name}\n")
+            voc_classes_fp.close()
 
         return
 

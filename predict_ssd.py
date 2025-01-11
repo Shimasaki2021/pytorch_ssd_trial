@@ -4,30 +4,45 @@ import sys
 import cv2
 import os
 import time
-from typing import List,Tuple
+from typing import List,Tuple,Any
 
 from utils.ssd_model import SSD, DataTransform
 import numpy as np
 import torch
 
-from common_ssd import ImageProc, SSDModel
+from common_ssd import ImageProc, SSDModel, makeVocClassesTxtFpath
 
 # SSDモデル作成＆推論
 class SSDModelDetector(SSDModel):
 
-    def __init__(self, device:torch.device, voc_classes:List[str], weight_fpath:str):
+    def __init__(self, device:torch.device, weight_fpath:str):
+        # 学習済み重みをロード
+        (net_weights, voc_classes) = self.loadWeight(weight_fpath)
+
         super().__init__(device, voc_classes)
 
         # SSDネットワークモデル
         self.net_ = SSD(phase="inference", cfg=self.ssd_cfg_)
-
-        # SSDに、学習済み重みを設定
-        net_weights = torch.load(weight_fpath, weights_only=True) # FutureWarning: You are using torch.load..対策
         self.net_.load_state_dict(net_weights)
 
         # ネットワークをDeviceへ
         self.net_.to(self.device_)
         return
+    
+    def loadWeight(self, weight_fpath:str) -> Tuple[Any, List[str]]:
+        # ネットワーク重みをロード
+        net_weights = torch.load(weight_fpath, weights_only=True) # FutureWarning: You are using torch.load..対策
+
+        # クラス名リスト（voc_classes）をロード
+        voc_classes:List[str] = []
+
+        voc_classes_fpath = makeVocClassesTxtFpath(weight_fpath)
+        voc_classes_fp = open(voc_classes_fpath,"r")
+        if voc_classes_fp is not None:
+            voc_classes = [name.strip() for name in voc_classes_fp.readlines()]
+            voc_classes_fp.close()
+
+        return (net_weights, voc_classes)
     
     def predict(self, img:np.ndarray, data_confidence_level:float=0.5) -> Tuple[List[np.ndarray], List[int], List[float]]:
         # 画像を前処理
@@ -176,7 +191,7 @@ def main_det_img(img_procs:List[ImageProc], ssd_model:SSDModelDetector, img_fpat
 
     return
 
-def main(media_fpath:str, play_fps:float, weight_fpath:str, voc_classes:List[str]):
+def main(media_fpath:str, play_fps:float, weight_fpath:str):
 
     if os.path.isfile(media_fpath) == False:
         print("Error: ", media_fpath, " is nothing.")
@@ -187,7 +202,7 @@ def main(media_fpath:str, play_fps:float, weight_fpath:str, voc_classes:List[str
         # device = torch.device("cpu")
         print("使用デバイス：", device)
 
-        ssd_model = SSDModelDetector(device, voc_classes, weight_fpath)
+        ssd_model = SSDModelDetector(device, weight_fpath)
 
         # 検出範囲: 600x300に切り出し
         # img_procs = [ImageProc(500, 250, 1100, 550)]
@@ -211,7 +226,6 @@ if __name__ == "__main__":
     args = sys.argv
 
     weight_fpath = "./weights/ssd_best_od_cars.pth"
-    voc_classes  = ["car"]
 
     play_fps:float = -1.0
 
@@ -221,4 +235,4 @@ if __name__ == "__main__":
         if len(args) >= 3:
             play_fps = float(args[2])
 
-        main(args[1], play_fps, weight_fpath, voc_classes)
+        main(args[1], play_fps, weight_fpath)
