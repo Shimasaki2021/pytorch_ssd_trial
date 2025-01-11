@@ -554,12 +554,12 @@ def nm_suppression(boxes, scores, overlap=0.45, top_k=200):
     area = torch.mul(x2 - x1, y2 - y1)
 
     # boxesをコピーする。後で、BBoxの被り度合いIOUの計算に使用する際のひな形として用意
-    tmp_x1 = boxes.new()
-    tmp_y1 = boxes.new()
-    tmp_x2 = boxes.new()
-    tmp_y2 = boxes.new()
-    tmp_w = boxes.new()
-    tmp_h = boxes.new()
+    # tmp_x1 = boxes.new()
+    # tmp_y1 = boxes.new()
+    # tmp_x2 = boxes.new()
+    # tmp_y2 = boxes.new()
+    # tmp_w = boxes.new()
+    # tmp_h = boxes.new()
 
     # socreを昇順に並び変える
     v, idx = scores.sort(0)
@@ -587,10 +587,14 @@ def nm_suppression(boxes, scores, overlap=0.45, top_k=200):
         # これからkeepに格納したBBoxと被りの大きいBBoxを抽出して除去する
         # -------------------
         # ひとつ減らしたidxまでのBBoxを、outに指定した変数として作成する
-        torch.index_select(x1, 0, idx, out=tmp_x1)
-        torch.index_select(y1, 0, idx, out=tmp_y1)
-        torch.index_select(x2, 0, idx, out=tmp_x2)
-        torch.index_select(y2, 0, idx, out=tmp_y2)
+        # torch.index_select(x1, 0, idx, out=tmp_x1)
+        # torch.index_select(y1, 0, idx, out=tmp_y1)
+        # torch.index_select(x2, 0, idx, out=tmp_x2)
+        # torch.index_select(y2, 0, idx, out=tmp_y2)
+        tmp_x1 = torch.index_select(x1, 0, idx) 
+        tmp_y1 = torch.index_select(y1, 0, idx)
+        tmp_x2 = torch.index_select(x2, 0, idx)
+        tmp_y2 = torch.index_select(y2, 0, idx)
 
         # すべてのBBoxに対して、現在のBBox=indexがiと被っている値までに設定(clamp)
         tmp_x1 = torch.clamp(tmp_x1, min=x1[i])
@@ -599,8 +603,8 @@ def nm_suppression(boxes, scores, overlap=0.45, top_k=200):
         tmp_y2 = torch.clamp(tmp_y2, max=y2[i])
 
         # wとhのテンソルサイズをindexを1つ減らしたものにする
-        tmp_w.resize_as_(tmp_x2)
-        tmp_h.resize_as_(tmp_y2)
+        # tmp_w.resize_as_(tmp_x2)
+        # tmp_h.resize_as_(tmp_y2)
 
         # clampした状態でのBBoxの幅と高さを求める
         tmp_w = tmp_x2 - tmp_x1
