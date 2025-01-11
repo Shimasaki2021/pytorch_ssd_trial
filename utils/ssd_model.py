@@ -636,12 +636,13 @@ def nm_suppression(boxes, scores, overlap=0.45, top_k=200):
 
 class Detect(Function):
 
-    def __init__(self, conf_thresh=0.01, top_k=200, nms_thresh=0.45):
-        self.softmax = nn.Softmax(dim=-1)  # confをソフトマックス関数で正規化するために用意
-        self.conf_thresh = conf_thresh  # confがconf_thresh=0.01より高いDBoxのみを扱う
-        self.top_k = top_k  # nm_supressionでconfの高いtop_k個を計算に使用する, top_k = 200
-        self.nms_thresh = nms_thresh  # nm_supressionでIOUがnms_thresh=0.45より大きいと、同一物体へのBBoxとみなす
+    # def __init__(self, conf_thresh=0.01, top_k=200, nms_thresh=0.45):
+    #     self.softmax = nn.Softmax(dim=-1)  # confをソフトマックス関数で正規化するために用意
+    #     self.conf_thresh = conf_thresh  # confがconf_thresh=0.01より高いDBoxのみを扱う
+    #     self.top_k = top_k  # nm_supressionでconfの高いtop_k個を計算に使用する, top_k = 200
+    #     self.nms_thresh = nms_thresh  # nm_supressionでIOUがnms_thresh=0.45より大きいと、同一物体へのBBoxとみなす
 
+    @staticmethod
     def forward(self, loc_data, conf_data, dbox_list):
         """
         順伝搬の計算を実行する。
@@ -660,6 +661,9 @@ class Detect(Function):
         output : torch.Size([batch_num, 21, 200, 5])
             （batch_num、クラス、confのtop200、BBoxの情報）
         """
+        self.conf_thresh = 0.01  # confがconf_thresh=0.01より高いDBoxのみを扱う
+        self.top_k = 200  # nm_supressionでconfの高いtop_k個を計算に使用する, top_k = 200
+        self.nms_thresh = 0.45  # nm_supressionでIOUがnms_thresh=0.45より大きいと、同一物体へのBBoxとみなす
 
         # 各サイズを取得
         num_batch = loc_data.size(0)  # ミニバッチのサイズ
@@ -667,7 +671,8 @@ class Detect(Function):
         num_classes = conf_data.size(2)  # クラス数 = 21
 
         # confはソフトマックスを適用して正規化する
-        conf_data = self.softmax(conf_data)
+        # conf_data = self.softmax(conf_data)
+        conf_data = F.softmax(conf_data, dim=-1)
 
         # 出力の型を作成する。テンソルサイズは[minibatch数, 21, 200, 5]
         output = torch.zeros(num_batch, num_classes, self.top_k, 5)
