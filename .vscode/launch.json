@@ -1,0 +1,25 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python デバッガー: train",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "train_ssd.py",
+            "console": "integratedTerminal",
+            "args": [
+                "2",
+            ]
+        },
+        {
+            "name": "Python デバッガー: predict",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "predict_ssd.py",
+            "console": "integratedTerminal",
+            "args": [
+                "data/od_cars_org_F00000.jpg",
+            ]
+        }
+    ]
+}

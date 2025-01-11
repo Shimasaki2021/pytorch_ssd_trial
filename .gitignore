@@ -1,0 +1,7 @@
+data/od_cars/
+data/*.mp4
+utils/__pycache__/
+output.cpu/
+output.cuda/
+__pycache__/
+test.ipynb
