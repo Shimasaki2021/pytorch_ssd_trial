@@ -1,5 +1,7 @@
 data/od_cars/
 data/*.mp4
+data/*Zone.Identifier
+weights/*Zone.Identifier
 utils/__pycache__/
 output.cpu/
 output.cuda/
