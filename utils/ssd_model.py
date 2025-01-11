@@ -155,10 +155,30 @@ class Anno_xml2list(object):
 
         return np.array(ret)  # [[xmin, ymin, xmax, ymax, label_ind], ... ]
 
+    def isExistObject(self, xml_path:str) -> bool:
+        is_exist_object = False
+
+        # xmlファイルを読み込む
+        xml = ET.parse(xml_path).getroot()
+        
+        # object数をカウント
+        num_obj = 0
+        for obj in xml.iter("object"):
+
+            # アノテーションで検知がdifficultに設定されているものはカウント対象外
+            difficult = int(obj.find("difficult").text)
+            if difficult == 1:
+                continue
+    
+            num_obj += 1
+
+        if num_obj > 0:
+            is_exist_object = True
+        
+        return is_exist_object
+        
 
 # 入力画像の前処理をするクラス
-
-
 class DataTransform():
     """
     画像とアノテーションの前処理クラス。訓練と推論で異なる動作をする。
