@@ -810,12 +810,14 @@ class SSD(nn.Module):
         conf = conf.view(conf.size(0), -1, self.num_classes)
 
         # 最後に出力する
+        self.dbox_list = self.dbox_list.to(loc.device) # これがないとgpu実行時にRuntimeErrorになる
         output = (loc, conf, self.dbox_list)
 
         if self.phase == "inference":  # 推論時
             # クラス「Detect」のforwardを実行
             # 返り値のサイズは torch.Size([batch_num, 21, 200, 5])
-            return self.detect(output[0], output[1], output[2])
+            # return self.detect(output[0], output[1], output[2])
+            return self.detect.apply(output[0], output[1], output[2])
 
         else:  # 学習時
             return output
