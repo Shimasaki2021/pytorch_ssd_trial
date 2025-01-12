@@ -281,7 +281,7 @@ if __name__ == "__main__":
     data_path   = "./data/od_cars"
     voc_classes = ["car"]
 
-    num_epochs = 400
+    num_epochs = 500
 
     if len(args) >= 2:
         num_epochs = int(args[1])

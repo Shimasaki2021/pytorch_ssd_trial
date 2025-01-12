@@ -191,7 +191,7 @@ def main_det_img(img_procs:List[ImageProc], ssd_model:SSDModelDetector, img_fpat
 
     return
 
-def main(media_fpath:str, play_fps:float, weight_fpath:str):
+def main(media_fpath:str, play_fps:float, weight_fpath:str, img_procs:List[ImageProc]):
 
     if os.path.isfile(media_fpath) == False:
         print("Error: ", media_fpath, " is nothing.")
@@ -203,10 +203,6 @@ def main(media_fpath:str, play_fps:float, weight_fpath:str):
         print("使用デバイス：", device)
 
         ssd_model = SSDModelDetector(device, weight_fpath)
-
-        # 検出範囲: 600x300に切り出し
-        # img_procs = [ImageProc(500, 250, 1100, 550)]
-        img_procs = [ImageProc(180, 250, 780, 550), ImageProc(680, 250, 1280, 550)]
 
         media_fname:str = os.path.basename(media_fpath)
         if ".mp4" in media_fname:
@@ -227,6 +223,9 @@ if __name__ == "__main__":
 
     weight_fpath = "./weights/ssd_best_od_cars.pth"
 
+    # 検出範囲: (1280x720を)600x300に切り出し(左右2領域)
+    img_procs = [ImageProc(180, 250, 780, 550), ImageProc(680, 250, 1280, 550)]
+
     play_fps:float = -1.0
 
     if len(args) < 2:
@@ -235,4 +234,4 @@ if __name__ == "__main__":
         if len(args) >= 3:
             play_fps = float(args[2])
 
-        main(args[1], play_fps, weight_fpath)
+        main(args[1], play_fps, weight_fpath, img_procs)

@@ -73,6 +73,12 @@ class ImageProc:
 
         return img_org
 
+    def toString(self) -> str:
+        w = self.darea_rb_x_ - self.darea_lu_x_
+        h = self.darea_rb_y_ - self.darea_lu_y_
+        ret_str = f"{self.darea_lu_x_}_{self.darea_lu_y_}_{w}x{h}"
+        return ret_str
+
     @staticmethod
     def drawText(img:np.ndarray, text:str, loc:cv2.typing.Point, scale:float, col:cv2.typing.Scalar, thick:int, is_bound:bool):
         if is_bound == True:
