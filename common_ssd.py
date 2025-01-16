@@ -1,6 +1,7 @@
 import os
 import glob
 import random
+import copy
 
 import cv2
 import numpy as np
@@ -145,7 +146,9 @@ class VocDataSetMng:
     def calcAnnoObjInfo(self, phase:str) -> Dict[str,Dict[str,any]]:
         # 物体(正解)情報（数、サイズ）を集計
         obj_info:Dict[str,any] = {"num":0, "w_ave":0.0, "h_ave":0.0}
-        objset_info = {cls_name:obj_info for cls_name in self.voc_classes_}
+        objset_info = {}
+        for cls_name in self.voc_classes_:
+            objset_info[cls_name] = copy.deepcopy(obj_info)
 
         target_dataset:VOCDataset = None
 

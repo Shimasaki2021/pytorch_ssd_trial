@@ -279,7 +279,7 @@ if __name__ == "__main__":
     args = sys.argv
 
     data_path   = "./data/od_cars"
-    voc_classes = ["car"]
+    voc_classes = ["car","truck"]
 
     num_epochs = 500
 
