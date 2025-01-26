@@ -6,6 +6,7 @@ import sys
 import time
 from typing import List
 from io import TextIOWrapper
+import datetime
 
 from tqdm import tqdm
 import torch
@@ -27,6 +28,9 @@ class SSDModelTrainerDebug:
         self.debug_outdir_:str     = ""
         self.res_weight_fpath_:str = ""
         self.debug_log_fp_:TextIOWrapper = None
+
+        t_delta   = datetime.timedelta(hours=9)
+        self.JST_ = datetime.timezone(t_delta, 'JST')
         return
 
     def openLogFile(self, dev_name:str, res_weight_fpath:str, fname:str):
@@ -54,6 +58,30 @@ class SSDModelTrainerDebug:
             self.debug_log_fp_ = None
         return
 
+    def outputLogModuleInfo(self, mod_name:str, mod_list:nn.ModuleList):
+        for idx,module in enumerate(mod_list):
+            self.debug_log_fp_.write(f"[{mod_name}{idx}] {module}")
+
+            grads = [p.requires_grad for p in module.parameters()]
+
+            if len(grads) > 0:              
+                self.debug_log_fp_.write(" requires_grad=")
+                for grad in grads: 
+                    self.debug_log_fp_.write(f"{grad},")
+
+            self.debug_log_fp_.write("\n")
+        return
+        
+    def outputLogNetInfo(self, net:SSD):
+        if self.isOutputLog() == True:
+            self.debug_log_fp_.write("\n == net ==\n")
+            self.outputLogModuleInfo("vgg",    net.vgg)
+            self.outputLogModuleInfo("extras", net.extras)
+            self.outputLogModuleInfo("loc",    net.loc)
+            self.outputLogModuleInfo("conf",   net.conf)
+            self.debug_log_fp_.write("\n")
+        return
+    
     def outputLogSummary(self,dev_name:str, learn_data_path:str, epoch:int, val_loss:float):
         if self.isOutputLog() == True:
             self.debug_log_fp_.write("\n == summary ==\n")
@@ -66,7 +94,9 @@ class SSDModelTrainerDebug:
     
     def outputLogEpochSummary(self, epoch:int, time_sec:float, train_loss:float, val_loss:float, train_iter:int, val_iter:int):
         if self.isOutputLog() == True:
-            self.debug_log_fp_.write(f"epoch,{epoch},{time_sec:.4f},sec,train_Loss,{train_loss:.4f},(it:,{train_iter},),val_Loss,{val_loss:.4f},(it:,{val_iter},)\n")
+            now     = datetime.datetime.now(self.JST_)
+            now_str = now.strftime("%Y%m%d_%H%M%S")
+            self.debug_log_fp_.write(f"epoch,{epoch},{time_sec:.4f},sec,train_Loss,{train_loss:.4f},(it:,{train_iter},),val_Loss,{val_loss:.4f},(it:,{val_iter},),{now_str}\n")
         return
     
     def outputLogDataSetSummary(self, voc_dataset:VocDataSetMng):
@@ -97,7 +127,7 @@ class SSDModelTrainerDebug:
 # SSDモデル作成＆学習
 class SSDModelTrainer(SSDModel):
 
-    def __init__(self, device:torch.device, voc_classes:List[str]):
+    def __init__(self, device:torch.device, voc_classes:List[str], freeze_layer:int):
         super().__init__(device, voc_classes)
 
         # SSDネットワークモデル
@@ -122,6 +152,13 @@ class SSDModelTrainer(SSDModel):
         #self.optimizer_ = optim.SGD(self.net_.parameters(), lr=1e-3, momentum=0.9, weight_decay=5e-4)
         #self.optimizer_ = optim.Adam(self.net_.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
         self.optimizer_ = optim.AdamW(self.net_.parameters(), lr=0.001)
+
+        # VGGの重みをfreeze
+        for idx,module in enumerate(self.net_.vgg):
+            if idx <= freeze_layer:
+                for param in module.parameters():
+                    param.requires_grad = False
+
         return
     
     @staticmethod
@@ -230,6 +267,7 @@ class SSDModelTrainer(SSDModel):
         # debug
         debug_train.outputLogSummary(self.device_.type, voc_dataset.data_path_, epoch_at_min_loss, min_loss)
         debug_train.outputLogDataSetSummary(voc_dataset)
+        debug_train.outputLogNetInfo(self.net_)
         debug_train.closeLogFile()
 
         return
@@ -250,7 +288,7 @@ class SSDModelTrainer(SSDModel):
         return
 
 
-def main(num_epochs:int, data_path:str, voc_classes:List[str]):
+def main(num_epochs:int, data_path:str, voc_classes:List[str], freeze_layer:int):
 
     if os.path.isdir(data_path) == False:
         print("Error: ", data_path, " is nothing.")
@@ -260,7 +298,7 @@ def main(num_epochs:int, data_path:str, voc_classes:List[str]):
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         print("使用デバイス：", device)
 
-        ssd_model = SSDModelTrainer(device, voc_classes)
+        ssd_model = SSDModelTrainer(device, voc_classes, freeze_layer)
     
         # データセット作成
         voc_dataset = VocDataSetMng(data_path, voc_classes, ssd_model.color_mean_, ssd_model.input_size_)
@@ -278,12 +316,13 @@ def main(num_epochs:int, data_path:str, voc_classes:List[str]):
 if __name__ == "__main__":
     args = sys.argv
 
-    data_path   = "./data/od_cars"
-    voc_classes = ["car","truck"]
+    data_path    = "./data/od_cars"
+    voc_classes  = ["car","truck"]
+    freeze_layer = 5
 
     num_epochs = 500
 
     if len(args) >= 2:
         num_epochs = int(args[1])
 
-    main(num_epochs, data_path, voc_classes)
+    main(num_epochs, data_path, voc_classes, freeze_layer)
