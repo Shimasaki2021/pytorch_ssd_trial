@@ -4,13 +4,14 @@ import sys
 import cv2
 import os
 import time
+import glob
 from typing import List,Tuple,Any
 
-from utils.ssd_model import SSD, DataTransform
+from utils.ssd_model import SSD, DataTransform, VOCDataset, Anno_xml2list
 import numpy as np
 import torch
 
-from common_ssd import ImageProc, SSDModel, makeVocClassesTxtFpath
+from common_ssd import ImageProc, SSDModel, DetResult, DrawPen, makeVocClassesTxtFpath
 
 # SSDモデル作成＆推論
 class SSDModelDetector(SSDModel):
@@ -128,14 +129,18 @@ def main_play_movie(img_procs:List[ImageProc], ssd_model:SSDModelDetector, movie
 
                     # SSD物体検出
                     (predict_bbox, pre_dict_label_index, scores) = ssd_model.predict(img_det, conf)
+                    det_results = img_proc.convDetResult(ssd_model.voc_classes_, predict_bbox, pre_dict_label_index, scores)
 
                     # 検出結果描画
-                    img_org = img_proc.drawResultDet(img_org, ssd_model.voc_classes_, predict_bbox, pre_dict_label_index, scores)
+                    img_org = img_proc.drawResultDet(img_org, det_results, DrawPen((255,255,255), 1, 0.4))
 
                 time_e = time.perf_counter()
 
                 # FPS等を描画
-                img_org = img_proc.drawResultSummary(img_org, frame_no, num_frame, ssd_model.device_.type, (time_e - time_s))
+                img_org = img_proc.drawResultSummary(img_org, frame_no, num_frame, 
+                                                     ssd_model.device_.type, 
+                                                     (time_e - time_s),
+                                                     DrawPen((255,255,255), 2, 0.6))
 
                 # 保存
                 frame_img_fpath = output_imgdir_path + "/F{:05}".format(frame_no) + ".jpg" 
@@ -173,14 +178,18 @@ def main_det_img(img_procs:List[ImageProc], ssd_model:SSDModelDetector, img_fpat
 
             # SSD物体検出
             (predict_bbox, pre_dict_label_index, scores) = ssd_model.predict(img_det, conf)
+            det_results = img_proc.convDetResult(ssd_model.voc_classes_, predict_bbox, pre_dict_label_index, scores)
 
             # 検出結果描画
-            img_org = img_proc.drawResultDet(img_org, ssd_model.voc_classes_, predict_bbox, pre_dict_label_index, scores)
+            img_org = img_proc.drawResultDet(img_org, det_results, DrawPen((255,255,255), 1, 0.4))
 
         time_e = time.perf_counter()
 
         # FPS等を描画
-        img_org = img_proc.drawResultSummary(img_org, 0, 0, ssd_model.device_.type, (time_e - time_s))
+        img_org = img_proc.drawResultSummary(img_org, 0, 0, 
+                                             ssd_model.device_.type, 
+                                             (time_e - time_s),
+                                             DrawPen((255,255,255), 2, 0.6))
 
         # 保存
         img_fname = os.path.splitext(os.path.basename(img_fpath))[0]
@@ -191,9 +200,93 @@ def main_det_img(img_procs:List[ImageProc], ssd_model:SSDModelDetector, img_fpat
 
     return
 
+def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
+    # 検出領域は、画像全域のみサポート
+    img_proc = ImageProc()
+
+    # 画像出力用フォルダ作成
+    if img_dir[-1] == "/":
+        output_imgdir_name = os.path.basename(os.path.dirname(img_dir))
+    else:
+        output_imgdir_name = os.path.basename(img_dir)
+
+    output_imgdir_path = f"./output.{ssd_model.device_.type}/{output_imgdir_name}"
+
+    if os.path.isdir(output_imgdir_path) == False:
+        os.makedirs(output_imgdir_path)
+
+    # 入力画像ファイルリスト読み込み
+    parse_anno = Anno_xml2list(ssd_model.voc_classes_)
+    val_file_all  = [os.path.split(f)[1].split(".")[0] for f in glob.glob(f"{img_dir}/*.xml")]
+    val_file_list = [f for f in val_file_all if parse_anno.isExistObject(f"{img_dir}/{f}.xml") == True]
+
+    is_exist_anno = False
+    val_img_list  = []
+    val_anno_list = []
+    if len(val_file_list) > 0:
+        # [アノテーションデータがある場合] 
+        is_exist_anno = True
+        val_img_list  = [f"{img_dir}/{f}.jpg" for f in val_file_list]
+        val_anno_list = [f"{img_dir}/{f}.xml" for f in val_file_list]
+
+    else:
+        # [画像データのみの場合] 
+        val_img_list    = [f"{img_dir}/{f}.jpg" for f in val_file_all]
+
+    num_img = len(val_img_list)
+
+    for idx, img_fpath in enumerate(val_img_list):
+
+        # 入力画像読み込み
+        img_org = cv2.imread(img_fpath) 
+
+        if img_org is not None:
+            
+            time_s = time.perf_counter()
+
+            # SSD物体検出
+            (predict_bbox, pre_dict_label_index, scores) = ssd_model.predict(img_org, conf)
+            det_results = img_proc.convDetResult(ssd_model.voc_classes_, predict_bbox, pre_dict_label_index, scores)
+
+            # 検出結果描画
+            img_org = img_proc.drawResultDet(img_org, det_results, DrawPen((128,255,255), 1, 0.4))
+
+            time_e = time.perf_counter()
+
+            # アノテーションデータ取得＆描画
+            if is_exist_anno == True:
+                img_h, img_w, _ = img_org.shape
+                # anno_list = parse_anno(val_anno_list[idx], img_w, img_h)
+                anno_data = img_proc.getAnnoData(val_anno_list[idx], parse_anno, ssd_model.voc_classes_, img_w, img_h)
+                img_org = img_proc.drawAnnoData(img_org, anno_data, DrawPen((128,255,128), 1, 0.4))
+
+
+            # FPS等を描画
+            # img_org = img_proc.drawResultSummary(img_org, 0, 0, 
+            #                                      ssd_model.device_.type, 
+            #                                      (time_e - time_s),
+            #                                      DrawPen((255,255,255), 1, 0.4))
+
+            # 保存
+            img_fname = os.path.splitext(os.path.basename(img_fpath))[0]
+            img_out_fpath = f"{output_imgdir_path}/{img_fname}_result.jpg"
+            cv2.imwrite(img_out_fpath, img_org)
+
+            print(f"[{idx}/{num_img}] output: {img_out_fpath}", )
+
+        # 表示
+        cv2.imshow(output_imgdir_name, img_org)
+
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord("q"):
+            break        
+
+    return
+
+
 def main(media_fpath:str, play_fps:float, weight_fpath:str, img_procs:List[ImageProc]):
 
-    if os.path.isfile(media_fpath) == False:
+    if (os.path.isfile(media_fpath) == False) and (os.path.isdir(media_fpath) == False):
         print("Error: ", media_fpath, " is nothing.")
 
     else:
@@ -212,6 +305,10 @@ def main(media_fpath:str, play_fps:float, weight_fpath:str, img_procs:List[Image
         elif (".jpg" in media_fname) or (".png" in media_fname):
             # 画像
             main_det_img(img_procs, ssd_model, media_fpath, 0.5)
+        
+        elif os.path.isdir(media_fpath) == True:
+            # ディレクトリ
+            main_play_imageset(ssd_model, media_fpath, 0.5)
 
         else:
             print("No support ext [", media_fname, "]")
@@ -223,8 +320,9 @@ if __name__ == "__main__":
 
     weight_fpath = "./weights/ssd_best_od_cars.pth"
 
-    # 検出範囲: (1280x720を)600x300に切り出し(左右2領域)
-    img_procs = [ImageProc(180, 250, 780, 550), ImageProc(680, 250, 1280, 550)]
+    # 検出範囲
+    img_procs = [ImageProc(180, 250, 780, 550), ImageProc(680, 250, 1280, 550)] # (1280x720を)600x300に切り出し(左右2領域)
+    # img_procs = [ImageProc()] # 全域
 
     play_fps:float = -1.0
 

@@ -14,48 +14,61 @@ from sklearn.model_selection import train_test_split
 
 from utils.ssd_model import VOCDataset, DataTransform, Anno_xml2list, od_collate_fn
 
+class DetResult:
+    def __init__(self, class_name:str, bbox:np.ndarray, score:float):
+        self.class_name_ = class_name
+        self.bbox_       = bbox
+        self.score_      = score
+        return
+
+class AnnoData:
+    def __init__(self, class_name:str, bbox:np.ndarray):
+        self.class_name_ = class_name
+        self.bbox_       = bbox
+        return
+
+class DrawPen:
+    def __init__(self, col:Tuple[int], thick:int, char_size:float):
+        self.col_       = col
+        self.thick_     = thick
+        self.char_size_ = char_size
+        return
+
 class ImageProc:
 
-    def __init__(self, lu_x:int, lu_y:int, rb_x:int, rb_y:int):
+    def __init__(self, lu_x:int=0, lu_y:int=0, rb_x:int=0, rb_y:int=0):
         self.darea_lu_x_ = lu_x
         self.darea_lu_y_ = lu_y
         self.darea_rb_x_ = rb_x
         self.darea_rb_y_ = rb_y
 
-        self.draw_char_col_   = (255,255,255)
-        self.draw_char_size_  = 0.6
-        self.draw_char_thick_ = 2
+        # self.draw_char_col_   = (255,255,255)
+        # self.draw_char_size_  = 0.6
+        # self.draw_char_thick_ = 2
         self.draw_col_darea_  = (0,128,0)
+
+        self.is_no_proc_ = False
+        if self.darea_lu_x_ == 0 and \
+            self.darea_lu_y_ == 0 and \
+            self.darea_rb_x_ == 0 and \
+            self.darea_rb_y_ == 0:
+
+            self.is_no_proc_ = True
         return 
 
-    def clip(self, img:np.ndarray) -> np.ndarray:
-        return img[self.darea_lu_y_:self.darea_rb_y_, self.darea_lu_x_:self.darea_rb_x_]
+    def clip(self, img:np.ndarray) -> np.ndarray:    
+        if self.is_no_proc_ == False:
+            return img[self.darea_lu_y_:self.darea_rb_y_, self.darea_lu_x_:self.darea_rb_x_]
+        else:
+            return copy.deepcopy(img)
+    
+    def convDetResult(self, voc_classes:List[str], predict_bbox:List[np.ndarray], pre_dict_label_index:List[int], scores:List[float]) -> List[DetResult]:
 
-    def drawResultSummary(self, img_org:np.ndarray, frame_no:int, frame_num:int, dev_type:str, time_proc_sec:float) -> np.ndarray:
-        # FPS等を描画
-        str_fps = "F{:05}".format(frame_no) + "/{:05}".format(frame_num) + " fps={:.1f}".format(1.0 / time_proc_sec) + " dev:" + dev_type
-        ImageProc.drawText(img_org, str_fps, (10, 15), self.draw_char_size_, self.draw_char_col_, self.draw_char_thick_, True)
-        
-        return img_org
-
-    def drawResultDet(self, img_org:np.ndarray, voc_classes:List[str], predict_bbox:List[np.ndarray], pre_dict_label_index:List[int], scores:List[float]) -> np.ndarray:
-
-        # 検出範囲を描画
-        cv2.rectangle(img_org, (self.darea_lu_x_, self.darea_lu_y_), 
-                               (self.darea_rb_x_, self.darea_rb_y_), 
-                               self.draw_col_darea_, self.draw_char_thick_)
-        ImageProc.drawText(img_org, "det area", 
-                                    (self.darea_lu_x_, self.darea_rb_y_+15), 
-                                    self.draw_char_size_, self.draw_col_darea_, self.draw_char_thick_, False)
+        ret_results:List[DetResult] = []
 
         for i, bb in enumerate(predict_bbox):
             label_name = voc_classes[pre_dict_label_index[i]]
-
-            if scores is not None:
-                sc = scores[i]
-                display_txt = '%s: %.2f' % (label_name, sc)
-            else:
-                display_txt = '%s: ans' % (label_name)
+            sc = scores[i]
 
             # clip前の画像上での座標値に変換
             bb_org = np.array([bb[0] + float(self.darea_lu_x_), 
@@ -64,13 +77,85 @@ class ImageProc:
                                bb[3] + float(self.darea_lu_y_)])
             bb_i = bb_org.astype(np.int64)
 
+            ret_results.append(DetResult(label_name, bb_i, sc))
+
+        return ret_results
+
+    def getAnnoData(self, anno_file:str, parse_anno:Anno_xml2list, voc_classes:List[str], img_w:int, img_h:int) -> List[AnnoData]:
+        # anno_list: [[xmin, ymin, xmax, ymax, label_ind], ... ]
+        anno_list = parse_anno(anno_file, img_w, img_h)
+
+        ret_results:List[AnnoData] = []
+
+        for anno_data in anno_list:
+            label_name = voc_classes[int(anno_data[4])]
+            bb_org = np.array(anno_data[:4]) * np.array([img_w, img_h, img_w, img_h])
+            bb_i   = bb_org.astype(np.int64)
+
+            ret_results.append(AnnoData(label_name, bb_i))
+
+        return ret_results
+                     
+    def drawResultSummary(self, img_org:np.ndarray, frame_no:int, frame_num:int, dev_type:str, time_proc_sec:float, pen:DrawPen) -> np.ndarray:
+        # FPS等を描画
+        str_frame = ""
+        if frame_num > 0:
+            str_frame = f"{frame_no:05}/{frame_num:05} "
+        
+        str_fps = f"fps={(1.0 / time_proc_sec):.1f} dev:{dev_type}"
+
+        # str_fps = "F{:05}".format(frame_no) + "/{:05}".format(frame_num) + " fps={:.1f}".format(1.0 / time_proc_sec) + " dev:" + dev_type
+        ImageProc.drawText(img_org, str_frame + str_fps, (10, 15), pen.char_size_, pen.col_, pen.thick_, True)
+        
+        return img_org
+
+    def drawResultDet(self, img_org:np.ndarray, det_results:List[DetResult], pen:DrawPen) -> np.ndarray:
+
+        if self.is_no_proc_ == False:
+            # 検出範囲を描画
+            cv2.rectangle(img_org, (self.darea_lu_x_, self.darea_lu_y_), 
+                                (self.darea_rb_x_, self.darea_rb_y_), 
+                                self.draw_col_darea_, pen.thick_)
+            ImageProc.drawText(img_org, "det area", 
+                                        (self.darea_lu_x_, self.darea_rb_y_+15), 
+                                        pen.char_size_, self.draw_col_darea_, pen.thick_, False)
+
+        for det in det_results:
+            display_txt = f"{det.class_name_}:{det.score_:.2f}"
+
             # 検出結果を描画
-            cv2.rectangle(img_org, (bb_i[0], bb_i[1]), 
-                                   (bb_i[2], bb_i[3]), 
-                                   self.draw_char_col_, self.draw_char_thick_*2)
+            cv2.rectangle(img_org, (det.bbox_[0], det.bbox_[1]), 
+                                   (det.bbox_[2], det.bbox_[3]), 
+                                   pen.col_, pen.thick_*2)
+            
+            loc_txt_y = det.bbox_[1]-7
+            if loc_txt_y < 10:
+                loc_txt_y = det.bbox_[3]-7
+            
             ImageProc.drawText(img_org, display_txt, 
-                                        (bb_i[0], bb_i[1]-7), 
-                                        self.draw_char_size_, self.draw_char_col_, self.draw_char_thick_, True)
+                                        (det.bbox_[0], loc_txt_y), 
+                                        pen.char_size_, pen.col_, pen.thick_, True)
+
+        return img_org
+
+    def drawAnnoData(self, img_org:np.ndarray, anno_data:List[AnnoData], pen:DrawPen) -> np.ndarray:
+
+        alpha = 0.6
+        img_cp = img_org.copy()
+        
+        for anno in anno_data:
+            display_txt = f"{anno.class_name_}"
+
+            # BBoxを描画
+            cv2.rectangle(img_cp, (anno.bbox_[0], anno.bbox_[1]), 
+                                   (anno.bbox_[2], anno.bbox_[3]), 
+                                   pen.col_, pen.thick_*2)
+
+            ImageProc.drawText(img_cp, display_txt, 
+                                       (anno.bbox_[0], anno.bbox_[3]+10), 
+                                       pen.char_size_, pen.col_, pen.thick_, True)
+
+        img_org = cv2.addWeighted(img_cp, alpha, img_org, 1.0-alpha, 0)
 
         return img_org
 
@@ -83,9 +168,14 @@ class ImageProc:
     @staticmethod
     def drawText(img:np.ndarray, text:str, loc:cv2.typing.Point, scale:float, col:cv2.typing.Scalar, thick:int, is_bound:bool):
         if is_bound == True:
-            col_bg = [255-c for c in col]
-            cv2.putText(img, text, loc, cv2.FONT_HERSHEY_SIMPLEX, scale, col_bg, thick*3)
-        cv2.putText(img, text, loc, cv2.FONT_HERSHEY_SIMPLEX, scale, col, thick)
+            #col_bg = [255-c for c in col]
+            if (col[0] + col[1] + col[2]) > (255*3/2):
+                col_bg = [0,0,0]
+            else:
+                col_bg = [255,255,255]
+            cv2.putText(img, text, loc, cv2.FONT_HERSHEY_SIMPLEX, scale, col_bg, thick*3, cv2.LINE_AA)
+
+        cv2.putText(img, text, loc, cv2.FONT_HERSHEY_SIMPLEX, scale, col, thick, cv2.LINE_AA)
         return
 
 
