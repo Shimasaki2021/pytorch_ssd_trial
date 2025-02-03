@@ -41,10 +41,11 @@ class ImageProc:
         self.darea_lu_y_ = lu_y
         self.darea_rb_x_ = rb_x
         self.darea_rb_y_ = rb_y
+        self.darea_w_ = rb_x - lu_x + 1
+        self.darea_h_ = rb_y - lu_y + 1
+        self.img_w_ = 0
+        self.img_h_ = 0
 
-        # self.draw_char_col_   = (255,255,255)
-        # self.draw_char_size_  = 0.6
-        # self.draw_char_thick_ = 2
         self.draw_col_darea_  = (0,128,0)
 
         self.is_no_proc_ = False
@@ -56,11 +57,29 @@ class ImageProc:
             self.is_no_proc_ = True
         return 
 
-    def clip(self, img:np.ndarray) -> np.ndarray:    
+    def clip(self, img:np.ndarray) -> np.ndarray:  
+        (self.img_h_, self.img_w_, _) = img.shape
+
         if self.is_no_proc_ == False:
             return img[self.darea_lu_y_:self.darea_rb_y_, self.darea_lu_x_:self.darea_rb_x_]
         else:
             return copy.deepcopy(img)
+    
+    def convBBox(self, bbox:np.ndarray) -> np.ndarray:
+        area_w = self.img_w_
+        area_h = self.img_h_
+        if self.is_no_proc_ == False:
+            area_w = self.darea_w_
+            area_h = self.darea_h_
+        
+        bbox = bbox * [area_w, area_h, area_w, area_h] 
+
+        bb_f = np.array([bbox[0] + float(self.darea_lu_x_), 
+                         bbox[1] + float(self.darea_lu_y_), 
+                         bbox[2] + float(self.darea_lu_x_), 
+                         bbox[3] + float(self.darea_lu_y_)])
+        bb_i = bb_f.astype(np.int64)
+        return bb_i
     
     def convDetResult(self, voc_classes:List[str], predict_bbox:List[np.ndarray], pre_dict_label_index:List[int], scores:List[float]) -> List[DetResult]:
 
@@ -159,10 +178,8 @@ class ImageProc:
 
         return img_org
 
-    def toString(self) -> str:
-        w = self.darea_rb_x_ - self.darea_lu_x_
-        h = self.darea_rb_y_ - self.darea_lu_y_
-        ret_str = f"{self.darea_lu_x_}_{self.darea_lu_y_}_{w}x{h}"
+    def __str__(self) -> str:
+        ret_str = f"{self.darea_lu_x_}_{self.darea_lu_y_}_{self.darea_w_}x{self.darea_h_}"
         return ret_str
 
     @staticmethod

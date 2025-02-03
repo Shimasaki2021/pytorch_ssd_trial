@@ -89,6 +89,57 @@ class SSDModelDetector(SSDModel):
         return (predict_bbox, pre_dict_label_index, scores)
 
 
+    def predict(self, img_procs:List[ImageProc], img_org:np.ndarray, data_confidence_level:float=0.5) -> List[DetResult]:
+        
+        # 複数範囲の画像バッチ化
+        transform = DataTransform(self.input_size_, self.color_mean_)
+
+        imgs_trans:List[np.ndarray] = []
+        for img_proc in img_procs:
+            # 検出範囲切り出し
+            img_det = img_proc.clip(img_org)
+            # 画像を前処理
+            (img_trans, _ ,_) = transform(img_det, "val", "", "")
+            imgs_trans.append(img_trans[:, :, (2, 1, 0)]) # [h,w,ch(BGR→RGB)]
+        
+        imgs_trans_np = np.array(imgs_trans)                         # [batch_num, h, w, ch(RGB)]
+        img_batch = torch.from_numpy(imgs_trans_np).permute(0,3,1,2) # [batch_num, ch(RGB), h, w]
+        img_batch = img_batch.to(self.device_)
+        # print(f"img_batch = {img_batch.shape}")
+
+        # 推論実行
+        torch.backends.cudnn.benchmark = True
+        self.net_.eval()
+        outputs = self.net_(img_batch)
+
+        # 結果取得
+        outputs    = outputs.cpu().detach().numpy()
+        find_index = np.where(outputs[:, :, :, 0] >= data_confidence_level) # (batch_num, label, top)
+        outputs    = outputs[find_index]
+
+        det_results:List[DetResult] = []
+
+        for i in range(len(find_index[1])):  # 抽出した物体数分ループを回す
+
+            area_no  = find_index[0][i] # 検出領域index (batch index)
+            label_no = find_index[1][i] # ラベル番号
+
+            if label_no > 0:  
+                # [背景クラスでない場合] 結果を取得
+
+                # 確信度conf
+                sc = outputs[i][0]
+
+                # クラス名
+                cls_name = self.voc_classes_[label_no-1] # ※背景クラスが0なので1を引く
+
+                # Bounding Box: 切り出し前の画像上での座標値に変換
+                bb_i = img_procs[area_no].convBBox( outputs[i][1:] )
+
+                det_results.append(DetResult(cls_name, bb_i, sc))
+
+        return det_results
+
 def main_play_movie(img_procs:List[ImageProc], ssd_model:SSDModelDetector, movie_fpath:str, play_fps:float, conf:float):
 
     # 画像出力用フォルダ作成
@@ -123,15 +174,11 @@ def main_play_movie(img_procs:List[ImageProc], ssd_model:SSDModelDetector, movie
                 
                 time_s = time.perf_counter()
 
+                # SSD物体検出
+                det_results = ssd_model.predict(img_procs, img_org)
+
+                # 検出結果描画
                 for img_proc in img_procs:
-                    # 検出範囲切り出し
-                    img_det = img_proc.clip(img_org)
-
-                    # SSD物体検出
-                    (predict_bbox, pre_dict_label_index, scores) = ssd_model.predict(img_det, conf)
-                    det_results = img_proc.convDetResult(ssd_model.voc_classes_, predict_bbox, pre_dict_label_index, scores)
-
-                    # 検出結果描画
                     img_org = img_proc.drawResultDet(img_org, det_results, DrawPen((255,255,255), 1, 0.4))
 
                 time_e = time.perf_counter()
@@ -172,15 +219,11 @@ def main_det_img(img_procs:List[ImageProc], ssd_model:SSDModelDetector, img_fpat
         
         time_s = time.perf_counter()
 
+        # SSD物体検出
+        det_results = ssd_model.predict(img_procs, img_org)
+
+        # 検出結果描画
         for img_proc in img_procs:
-            # 検出範囲切り出し
-            img_det = img_proc.clip(img_org)
-
-            # SSD物体検出
-            (predict_bbox, pre_dict_label_index, scores) = ssd_model.predict(img_det, conf)
-            det_results = img_proc.convDetResult(ssd_model.voc_classes_, predict_bbox, pre_dict_label_index, scores)
-
-            # 検出結果描画
             img_org = img_proc.drawResultDet(img_org, det_results, DrawPen((255,255,255), 1, 0.4))
 
         time_e = time.perf_counter()
