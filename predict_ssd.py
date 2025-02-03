@@ -44,50 +44,6 @@ class SSDModelDetector(SSDModel):
             voc_classes_fp.close()
 
         return (net_weights, voc_classes)
-    
-    def predict(self, img:np.ndarray, data_confidence_level:float=0.5) -> Tuple[List[np.ndarray], List[int], List[float]]:
-        # 画像を前処理
-        img_height, img_width, _ = img.shape
-
-        transform = DataTransform(self.input_size_, self.color_mean_)
-        (img_trans, _ ,_) = transform(img, "val", "", "")
-        img_torch = torch.from_numpy(img_trans[:, :, (2, 1, 0)]).permute(2, 0, 1) # BGR→RGB, (H,W,C)→(C,H,W)
-
-        img_batch = img_torch.unsqueeze(0)  # ミニバッチ化：torch.Size([1, 3, 300, 300])            
-        img_batch = img_batch.to(self.device_)
-
-        # 推論実行
-        torch.backends.cudnn.benchmark = True
-        self.net_.eval()
-        outputs = self.net_(img_batch)
-
-        # 結果取得
-        predict_bbox:List[np.ndarray]  = []
-        pre_dict_label_index:List[int] = []
-        scores:List[float]             = []    
-        outputs = outputs.cpu().detach().numpy()
-
-        find_index = np.where(outputs[:, 0:, :, 0] >= data_confidence_level)
-        outputs    = outputs[find_index]
-
-        for i in range(len(find_index[1])):  # 抽出した物体数分ループを回す
-
-            if (find_index[1][i]) > 0:  # 背景クラスでないもの
-                sc   = outputs[i][0]  # 確信度
-                bbox = outputs[i][1:] * [img_width, img_height, img_width, img_height]
-
-                # find_indexはミニバッチ数、クラス、topのtuple
-                lable_ind = find_index[1][i]-1
-                # （注釈）
-                # 背景クラスが0なので1を引く
-
-                # 返り値のリストに追加
-                predict_bbox.append(bbox)
-                pre_dict_label_index.append(lable_ind)
-                scores.append(sc)    
-
-        return (predict_bbox, pre_dict_label_index, scores)
-
 
     def predict(self, img_procs:List[ImageProc], img_org:np.ndarray, data_confidence_level:float=0.5) -> List[DetResult]:
         
@@ -284,31 +240,19 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
         img_org = cv2.imread(img_fpath) 
 
         if img_org is not None:
-            
-            time_s = time.perf_counter()
 
             # SSD物体検出
-            (predict_bbox, pre_dict_label_index, scores) = ssd_model.predict(img_org, conf)
-            det_results = img_proc.convDetResult(ssd_model.voc_classes_, predict_bbox, pre_dict_label_index, scores)
+            det_results = ssd_model.predict([img_proc], img_org, conf)
 
             # 検出結果描画
             img_org = img_proc.drawResultDet(img_org, det_results, DrawPen((128,255,255), 1, 0.4))
 
-            time_e = time.perf_counter()
-
             # アノテーションデータ取得＆描画
             if is_exist_anno == True:
                 img_h, img_w, _ = img_org.shape
-                # anno_list = parse_anno(val_anno_list[idx], img_w, img_h)
+
                 anno_data = img_proc.getAnnoData(val_anno_list[idx], parse_anno, ssd_model.voc_classes_, img_w, img_h)
                 img_org = img_proc.drawAnnoData(img_org, anno_data, DrawPen((128,255,128), 1, 0.4))
-
-
-            # FPS等を描画
-            # img_org = img_proc.drawResultSummary(img_org, 0, 0, 
-            #                                      ssd_model.device_.type, 
-            #                                      (time_e - time_s),
-            #                                      DrawPen((255,255,255), 1, 0.4))
 
             # 保存
             img_fname = os.path.splitext(os.path.basename(img_fpath))[0]

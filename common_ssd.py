@@ -80,25 +80,6 @@ class ImageProc:
                          bbox[3] + float(self.darea_lu_y_)])
         bb_i = bb_f.astype(np.int64)
         return bb_i
-    
-    def convDetResult(self, voc_classes:List[str], predict_bbox:List[np.ndarray], pre_dict_label_index:List[int], scores:List[float]) -> List[DetResult]:
-
-        ret_results:List[DetResult] = []
-
-        for i, bb in enumerate(predict_bbox):
-            label_name = voc_classes[pre_dict_label_index[i]]
-            sc = scores[i]
-
-            # clip前の画像上での座標値に変換
-            bb_org = np.array([bb[0] + float(self.darea_lu_x_), 
-                               bb[1] + float(self.darea_lu_y_), 
-                               bb[2] + float(self.darea_lu_x_), 
-                               bb[3] + float(self.darea_lu_y_)])
-            bb_i = bb_org.astype(np.int64)
-
-            ret_results.append(DetResult(label_name, bb_i, sc))
-
-        return ret_results
 
     def getAnnoData(self, anno_file:str, parse_anno:Anno_xml2list, voc_classes:List[str], img_w:int, img_h:int) -> List[AnnoData]:
         # anno_list: [[xmin, ymin, xmax, ymax, label_ind], ... ]

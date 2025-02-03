@@ -18,7 +18,7 @@
             "program": "predict_ssd.py",
             "console": "integratedTerminal",
             "args": [
-                "data/od_cars_org_F00000.jpg",
+                "data/od_cars_sample",
             ]
         }
     ]
