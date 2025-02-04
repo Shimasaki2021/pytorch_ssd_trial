@@ -7,7 +7,7 @@ import time
 import glob
 from typing import List,Tuple,Any
 
-from utils.ssd_model import SSD, DataTransform, VOCDataset, Anno_xml2list
+from utils.ssd_model import SSD, DataTransform, VOCDataset, Anno_xml2list, nm_suppression
 import numpy as np
 import torch
 
@@ -85,16 +85,39 @@ class SSDModelDetector(SSDModel):
 
                 # 確信度conf
                 sc = outputs[i][0]
-
                 # クラス名
-                cls_name = self.voc_classes_[label_no-1] # ※背景クラスが0なので1を引く
-
+                cls_name = self.voc_classes_[label_no-1]
                 # Bounding Box: 切り出し前の画像上での座標値に変換
                 bb_i = img_procs[area_no].convBBox( outputs[i][1:] )
 
                 det_results.append(DetResult(cls_name, bb_i, sc))
 
+        if len(img_procs) > 1:
+            # [検出領域が複数の場合] 重複領域での重複枠を取り除く
+            det_results = self.nmSuppression(det_results)
+
         return det_results
+
+    def nmSuppression(self, det_results:List[DetResult]) -> List[DetResult]:
+        det_results_sup:List[DetResult] = []
+
+        for cls_name in self.voc_classes_:
+            det_results_cls = [x for x in det_results if x.class_name_ == cls_name]
+
+            if len(det_results_cls) > 0:
+                bb_i_cls  = torch.from_numpy( np.array([x.bbox_  for x in det_results_cls]) )
+                score_cls = torch.from_numpy( np.array([x.score_ for x in det_results_cls]) )
+
+                (ids, count) = nm_suppression(bb_i_cls, score_cls)
+                
+                bb_i_cls_sup  = bb_i_cls[ids[:count]].cpu().detach().numpy().tolist()
+                score_cls_sup = score_cls[ids[:count]].cpu().detach().numpy().tolist()
+                
+                for bb_i, score in zip(bb_i_cls_sup, score_cls_sup):
+                    det_results_sup.append(DetResult(cls_name, bb_i, score))
+
+        return det_results_sup
+
 
 def main_play_movie(img_procs:List[ImageProc], ssd_model:SSDModelDetector, movie_fpath:str, play_fps:float, conf:float):
 
