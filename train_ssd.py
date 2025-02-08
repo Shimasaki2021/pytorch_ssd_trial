@@ -17,110 +17,93 @@ import torchvision
 
 from utils.ssd_model import SSD, MultiBoxLoss
 
-from common_ssd import SSDModel, VocDataSetMng, makeVocClassesTxtFpath
+from common_ssd import SSDModel, VocDataSetMng, Logger, makeVocClassesTxtFpath
 
 
-class SSDModelTrainerDebug:
+class SSDModelTrainerDebug(Logger):
 
-    def __init__(self, is_debug_out:bool, max_epoch:int):
-        self.is_debug_output_      = is_debug_out
+    def __init__(self, is_out:bool, max_epoch:int):
+        super().__init__(is_out)
+
         self.debug_out_max_epoch_  = max_epoch
-        self.debug_outdir_:str     = ""
         self.res_weight_fpath_:str = ""
-        self.debug_log_fp_:TextIOWrapper = None
 
         t_delta   = datetime.timedelta(hours=9)
         self.JST_ = datetime.timezone(t_delta, 'JST')
         return
 
     def openLogFile(self, dev_name:str, res_weight_fpath:str, fname:str):
-        if self.is_debug_output_ == True:
+        if self.is_out_ == True:
             self.res_weight_fpath_ = res_weight_fpath
 
             res_weight_fname   = os.path.splitext(os.path.basename(res_weight_fpath))[0]
-            self.debug_outdir_ = f"./output.{dev_name}/debug/train_{res_weight_fname}"
-
-            if os.path.isdir(self.debug_outdir_) == False:
-                os.makedirs(self.debug_outdir_)
-
-            self.debug_log_fp_ = open(self.debug_outdir_ + "/" + fname, "w")
-        return
-    
-    def isOutputLog(self) -> bool:
-        ret = False
-        if (self.is_debug_output_ == True) and (not (self.debug_log_fp_ is None)):
-            ret = True
-        return ret
-    
-    def closeLogFile(self):
-        if self.isOutputLog() == True:
-            self.debug_log_fp_.close()
-            self.debug_log_fp_ = None
+            super().openLogFile(dev_name, f"debug/train_{res_weight_fname}", fname, "w")
         return
 
     def outputLogModuleInfo(self, mod_name:str, mod_list:nn.ModuleList):
-        for idx,module in enumerate(mod_list):
-            self.debug_log_fp_.write(f"[{mod_name}{idx}] {module}")
+        if self.isOutputLog() == True:
+            for idx,module in enumerate(mod_list):
+                self.log_fp_.write(f"[{mod_name}{idx}] {module}")
 
-            grads = [p.requires_grad for p in module.parameters()]
+                grads = [p.requires_grad for p in module.parameters()]
 
-            if len(grads) > 0:              
-                self.debug_log_fp_.write(" requires_grad=")
-                for grad in grads: 
-                    self.debug_log_fp_.write(f"{grad},")
+                if len(grads) > 0:              
+                    self.log_fp_.write(" requires_grad=")
+                    for grad in grads: 
+                        self.log_fp_.write(f"{grad},")
 
-            self.debug_log_fp_.write("\n")
+                self.log_fp_.write("\n")
         return
         
     def outputLogNetInfo(self, net:SSD):
         if self.isOutputLog() == True:
-            self.debug_log_fp_.write("\n == net ==\n")
+            self.log_fp_.write("\n == net ==\n")
             self.outputLogModuleInfo("vgg",    net.vgg)
             self.outputLogModuleInfo("extras", net.extras)
             self.outputLogModuleInfo("loc",    net.loc)
             self.outputLogModuleInfo("conf",   net.conf)
-            self.debug_log_fp_.write("\n")
+            self.log_fp_.write("\n")
         return
     
     def outputLogSummary(self,dev_name:str, learn_data_path:str, epoch:int, val_loss:float):
         if self.isOutputLog() == True:
-            self.debug_log_fp_.write("\n == summary ==\n")
-            self.debug_log_fp_.write(f",device:,,{dev_name}\n")
-            self.debug_log_fp_.write(f",learn data:,,{learn_data_path}\n")
-            self.debug_log_fp_.write(f",out weight file:,,{self.res_weight_fpath_}\n")
-            self.debug_log_fp_.write(f",epoch at out weight:,,{epoch}\n")
-            self.debug_log_fp_.write(f",val loss at out weight:,,{val_loss}\n")
+            self.log_fp_.write("\n == summary ==\n")
+            self.log_fp_.write(f",device:,,{dev_name}\n")
+            self.log_fp_.write(f",learn data:,,{learn_data_path}\n")
+            self.log_fp_.write(f",out weight file:,,{self.res_weight_fpath_}\n")
+            self.log_fp_.write(f",epoch at out weight:,,{epoch}\n")
+            self.log_fp_.write(f",val loss at out weight:,,{val_loss}\n")
         return
     
     def outputLogEpochSummary(self, epoch:int, time_sec:float, train_loss:float, val_loss:float, train_iter:int, val_iter:int):
         if self.isOutputLog() == True:
             now     = datetime.datetime.now(self.JST_)
             now_str = now.strftime("%Y%m%d_%H%M%S")
-            self.debug_log_fp_.write(f"epoch,{epoch},{time_sec:.4f},sec,train_Loss,{train_loss:.4f},(it:,{train_iter},),val_Loss,{val_loss:.4f},(it:,{val_iter},),{now_str}\n")
+            self.log_fp_.write(f"epoch,{epoch},{time_sec:.4f},sec,train_Loss,{train_loss:.4f},(it:,{train_iter},),val_Loss,{val_loss:.4f},(it:,{val_iter},),{now_str}\n")
         return
     
     def outputLogDataSetSummary(self, voc_dataset:VocDataSetMng):
         if self.isOutputLog() == True:
-            self.debug_log_fp_.write("\n == dataset info ==\n")
+            self.log_fp_.write("\n == dataset info ==\n")
 
             for phase in ["train", "val"]:
                 image_num   = voc_dataset.getImageNum(phase)
 
-                self.debug_log_fp_.write(f"{phase}\n")
-                self.debug_log_fp_.write(f",image_num=,,{image_num}\n")
+                self.log_fp_.write(f"{phase}\n")
+                self.log_fp_.write(f",image_num=,,{image_num}\n")
 
                 for class_name in voc_dataset.voc_classes_:
                     (obj_num, obj_w_ave, obj_h_ave) = voc_dataset.getAnnoInfo(phase, class_name)
-                    self.debug_log_fp_.write(f",class:,{class_name}\n")
-                    self.debug_log_fp_.write(f",,obj_num=,,,{obj_num}\n")
-                    self.debug_log_fp_.write(f",,obj_size(ave)(w x h)=,,,{int(obj_w_ave)},{int(obj_h_ave)}\n")
+                    self.log_fp_.write(f",class:,{class_name}\n")
+                    self.log_fp_.write(f",,obj_num=,,,{obj_num}\n")
+                    self.log_fp_.write(f",,obj_size(ave)(w x h)=,,,{int(obj_w_ave)},{int(obj_h_ave)}\n")
 
         return
 
     def dumpInputImage(self, epoch:int, images:List[torch.Tensor], phase:str, batch_idx:int):
-        if (self.is_debug_output_ == True) and (epoch <= self.debug_out_max_epoch_):
+        if (self.is_out_ == True) and (epoch <= self.debug_out_max_epoch_):
             for image_no in range(images.shape[0]):
-                debug_out_fpath = self.debug_outdir_ + "/epoch" + str(epoch) + "_" + phase + "_b" + str(batch_idx) + "_" + str(image_no) + ".jpg"
+                debug_out_fpath = self.outdir_ + "/epoch" + str(epoch) + "_" + phase + "_b" + str(batch_idx) + "_" + str(image_no) + ".jpg"
                 torchvision.utils.save_image(images[image_no], debug_out_fpath)
         return
 
@@ -317,7 +300,8 @@ if __name__ == "__main__":
     args = sys.argv
 
     data_path    = "./data/od_cars"
-    voc_classes  = ["car","truck"]
+    voc_classes  = ["car"]
+    # voc_classes  = ["car","truck"]
     freeze_layer = 5
 
     num_epochs = 500

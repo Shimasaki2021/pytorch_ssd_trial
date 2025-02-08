@@ -11,7 +11,7 @@ from utils.ssd_model import SSD, DataTransform, VOCDataset, Anno_xml2list, nm_su
 import numpy as np
 import torch
 
-from common_ssd import ImageProc, SSDModel, DetResult, DrawPen, makeVocClassesTxtFpath
+from common_ssd import ImageProc, SSDModel, DetResult, AnnoData, DrawPen, Logger, makeVocClassesTxtFpath
 
 # SSDモデル作成＆推論
 class SSDModelDetector(SSDModel):
@@ -118,15 +118,47 @@ class SSDModelDetector(SSDModel):
 
         return det_results_sup
 
+class LogEvalAnno(Logger):
+    def __init__(self, is_out:bool):
+        super().__init__(is_out)
+        return
+    
+    def openLogFile(self, dev_name:str, output_imgdir_name:str):
+        if self.is_out_ == True:
+            super().openLogFile(dev_name, output_imgdir_name, "eval_anno.csv", "w")
+
+            if self.log_fp_ is not None:
+                self.log_fp_.write("img,")
+                self.log_fp_.write("ano:cls,ano:bbox,,,,ano:bbox_area,ano:bbox_size,")
+                self.log_fp_.write("det:is_exist,det:cls,det:bbox,,,,det:bbox_area,det:bbox_size,det:score,det:jaccard\n")
+        return
+
+    def writeLog(self, img_fpath:str, anno_data:AnnoData, pos_det:DetResult, jaccard_val:float):
+        if self.isOutputLog() == True:
+            w_line  = f"{img_fpath},"
+            w_line += f"{anno_data.class_name_},"
+            w_line += f"{int(anno_data.bbox_[0])},{int(anno_data.bbox_[1])},{int(anno_data.bbox_[2])},{int(anno_data.bbox_[3])},"
+            w_line += f"{int(anno_data.bbox_area_)},{int(anno_data.bbox_ave_size_)},"
+
+            if pos_det is not None:
+                w_line += f"True,"
+                w_line += f"{pos_det.class_name_},"
+                w_line += f"{int(pos_det.bbox_[0])},{int(pos_det.bbox_[1])},{int(pos_det.bbox_[2])},{int(pos_det.bbox_[3])},"
+                w_line += f"{int(pos_det.bbox_area_)},{int(pos_det.bbox_ave_size_)},"
+                w_line += f"{pos_det.score_:.2f},{jaccard_val:.2f}"
+
+            else:
+                w_line += f"False"
+            
+            self.log_fp_.write(f"{w_line}\n")
+
+        return
 
 def main_play_movie(img_procs:List[ImageProc], ssd_model:SSDModelDetector, movie_fpath:str, play_fps:float, conf:float):
 
     # 画像出力用フォルダ作成
-    output_imgdir_name:str = os.path.splitext(os.path.basename(movie_fpath))[0]
-    output_imgdir_path:str = f"./output.{ssd_model.device_.type}/" + output_imgdir_name
-
-    if os.path.isdir(output_imgdir_path) == False:
-        os.makedirs(output_imgdir_path)
+    output_imgdir_name = os.path.splitext(os.path.basename(movie_fpath))[0]
+    output_imgdir_path = Logger.createOutputDir(ssd_model.device_.type, output_imgdir_name)
 
     # 入力動画読み込み
     cap       = cv2.VideoCapture(movie_fpath)  
@@ -187,9 +219,7 @@ def main_play_movie(img_procs:List[ImageProc], ssd_model:SSDModelDetector, movie
 def main_det_img(img_procs:List[ImageProc], ssd_model:SSDModelDetector, img_fpath:str, conf:float):
 
     # 結果出力フォルダ作成
-    output_imgdir_path:str = f"./output.{ssd_model.device_.type}/"
-    if os.path.isdir(output_imgdir_path) == False:
-        os.makedirs(output_imgdir_path)
+    output_imgdir_path = Logger.createOutputDir(ssd_model.device_.type, "")
 
     # 入力画像読み込み
     img_org:np.ndarray = cv2.imread(img_fpath) 
@@ -215,7 +245,7 @@ def main_det_img(img_procs:List[ImageProc], ssd_model:SSDModelDetector, img_fpat
 
         # 保存
         img_fname = os.path.splitext(os.path.basename(img_fpath))[0]
-        img_out_fpath = f"{output_imgdir_path}{img_fname}_result.jpg"
+        img_out_fpath = f"{output_imgdir_path}/{img_fname}_result.jpg"
         cv2.imwrite(img_out_fpath, img_org)
 
         print("output: ", img_out_fpath)
@@ -232,10 +262,7 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
     else:
         output_imgdir_name = os.path.basename(img_dir)
 
-    output_imgdir_path = f"./output.{ssd_model.device_.type}/{output_imgdir_name}"
-
-    if os.path.isdir(output_imgdir_path) == False:
-        os.makedirs(output_imgdir_path)
+    output_imgdir_path = Logger.createOutputDir(ssd_model.device_.type, output_imgdir_name)
 
     # 入力画像ファイルリスト読み込み
     parse_anno = Anno_xml2list(ssd_model.voc_classes_)
@@ -245,15 +272,20 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
     is_exist_anno = False
     val_img_list  = []
     val_anno_list = []
+    
     if len(val_file_list) > 0:
         # [アノテーションデータがある場合] 
         is_exist_anno = True
         val_img_list  = [f"{img_dir}/{f}.jpg" for f in val_file_list]
         val_anno_list = [f"{img_dir}/{f}.xml" for f in val_file_list]
 
+        log_eval_anno = LogEvalAnno(True)
+        log_eval_anno.openLogFile(ssd_model.device_.type, output_imgdir_name)
+
     else:
         # [画像データのみの場合] 
-        val_img_list    = [f"{img_dir}/{f}.jpg" for f in val_file_all]
+        val_img_list  = [f"{img_dir}/{f}.jpg" for f in val_file_all]
+        log_eval_anno = LogEvalAnno(False)
 
     num_img = len(val_img_list)
 
@@ -270,17 +302,23 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
             # 検出結果描画
             img_org = img_proc.drawResultDet(img_org, det_results, DrawPen((128,255,255), 1, 0.4))
 
-            # アノテーションデータ取得＆描画
             if is_exist_anno == True:
+                # アノテーションデータ取得＆描画
                 img_h, img_w, _ = img_org.shape
 
                 anno_data = img_proc.getAnnoData(val_anno_list[idx], parse_anno, ssd_model.voc_classes_, img_w, img_h)
                 img_org = img_proc.drawAnnoData(img_org, anno_data, DrawPen((128,255,128), 1, 0.4))
 
+                for anno_cur in anno_data:
+                    # アノテーションデータの評価結果をログ出力
+                    (pos_det, jaccard_val) = anno_cur.extractPositiveDetResult(det_results)
+                    log_eval_anno.writeLog(img_fpath, anno_cur, pos_det, jaccard_val)
+
             # 保存
             img_fname = os.path.splitext(os.path.basename(img_fpath))[0]
             img_out_fpath = f"{output_imgdir_path}/{img_fname}_result.jpg"
             cv2.imwrite(img_out_fpath, img_org)
+
 
             print(f"[{idx}/{num_img}] output: {img_out_fpath}", )
 
@@ -290,6 +328,8 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
             break        
+
+    log_eval_anno.closeLogFile()
 
     return
 

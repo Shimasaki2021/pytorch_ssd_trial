@@ -2,10 +2,12 @@ import os
 import glob
 import random
 import copy
+import math
 
 import cv2
 import numpy as np
 from typing import List,Dict,Tuple
+from io import TextIOWrapper
 
 import torch
 import torch.utils.data as data
@@ -14,18 +16,47 @@ from sklearn.model_selection import train_test_split
 
 from utils.ssd_model import VOCDataset, DataTransform, Anno_xml2list, od_collate_fn
 
+def calcJaccard(bbox_a:np.ndarray, bbox_b:np.ndarray) -> float:
+    w = min(bbox_a[2], bbox_b[2]) - max(bbox_a[0], bbox_b[0])
+    h = min(bbox_a[3], bbox_b[3]) - max(bbox_a[1], bbox_b[1])
+    inter = max(w, 0) * max(h, 0)
+    area_a = (bbox_a[2] - bbox_a[0]) * (bbox_a[3] - bbox_a[1])
+    area_b = (bbox_b[2] - bbox_b[0]) * (bbox_b[3] - bbox_b[1])
+    return inter / (area_a + area_b - inter)
+
 class DetResult:
     def __init__(self, class_name:str, bbox:np.ndarray, score:float):
         self.class_name_ = class_name
-        self.bbox_       = bbox
+        self.bbox_       = bbox # [xmin,ymin,xmax,ymax]
         self.score_      = score
+
+        self.bbox_area_     = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
+        self.bbox_ave_size_ = math.sqrt(self.bbox_area_)
         return
 
 class AnnoData:
     def __init__(self, class_name:str, bbox:np.ndarray):
         self.class_name_ = class_name
-        self.bbox_       = bbox
+        self.bbox_       = bbox # [xmin,ymin,xmax,ymax]
+
+        self.bbox_area_     = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
+        self.bbox_ave_size_ = math.sqrt(self.bbox_area_)
         return
+    
+    def extractPositiveDetResult(self, det_results:List[DetResult], jaccard_thres=0.5) -> Tuple[DetResult,float]:
+        # 正検出（jaccard係数＞thres の検知）を抽出
+        #   複数存在する場合は最大値の結果を抽出
+        #   存在しない場合はNoneを返す
+        jaccard_max              = jaccard_thres
+        det_result_max:DetResult = None
+
+        for det in det_results:
+            jaccard_val = calcJaccard(self.bbox_, det.bbox_)
+            if jaccard_val > jaccard_max:
+                jaccard_max = jaccard_val
+                det_result_max = det
+
+        return (det_result_max, jaccard_max)
 
 class DrawPen:
     def __init__(self, col:Tuple[int], thick:int, char_size:float):
@@ -331,3 +362,38 @@ def makeVocClassesTxtFpath(weight_fpath:str) -> str:
     voc_classes_fpath = f"./weights/{os.path.splitext(os.path.basename(weight_fpath))[0]}_classes.txt"
     return voc_classes_fpath
 
+class Logger:
+    def __init__(self, is_out:bool):
+        self.is_out_  = is_out
+        self.outdir_  = ""
+        self.log_fp_:TextIOWrapper = None
+        return
+
+    @staticmethod
+    def createOutputDir(dev_name:str, dir_name:str) -> str:
+        if dir_name != "":
+            outdir_path = f"./output.{dev_name}/{dir_name}"
+        else:
+            outdir_path = f"./output.{dev_name}"
+
+        if os.path.isdir(outdir_path) == False:
+            os.makedirs(outdir_path)
+        return outdir_path
+
+    def openLogFile(self, dev_name:str, dir_name:str, f_name:str, mode:str):
+        if self.is_out_ == True:
+            self.outdir_ = Logger.createOutputDir(dev_name, dir_name)
+            self.log_fp_ = open(f"{self.outdir_}/{f_name}", mode)
+        return
+
+    def closeLogFile(self):
+        if (self.is_out_ == True) and (self.log_fp_ is not None):
+            self.log_fp_.close()
+            self.log_fp_ = None
+        return
+
+    def isOutputLog(self) -> bool:
+        ret = False
+        if (self.is_out_ == True) and (self.log_fp_ is not None):
+            ret = True
+        return ret
