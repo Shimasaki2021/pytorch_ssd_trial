@@ -37,7 +37,7 @@ class SSDModelTrainerDebug(Logger):
             self.res_weight_fpath_ = res_weight_fpath
 
             res_weight_fname   = os.path.splitext(os.path.basename(res_weight_fpath))[0]
-            super().openLogFile(dev_name, f"debug/train_{res_weight_fname}", fname, "w")
+            super().openLogFile(dev_name, f"train.{res_weight_fname}", fname, "w")
         return
 
     def outputLogModuleInfo(self, mod_name:str, mod_list:nn.ModuleList):
@@ -300,8 +300,8 @@ if __name__ == "__main__":
     args = sys.argv
 
     data_path    = "./data/od_cars"
-    voc_classes  = ["car"]
-    # voc_classes  = ["car","truck"]
+    # voc_classes  = ["car"]
+    voc_classes  = ["car","number"]
     freeze_layer = 5
 
     num_epochs = 500
