@@ -18,7 +18,7 @@ class SSDModelDetector(SSDModel):
 
     def __init__(self, device:torch.device, weight_fpath:str):
         # 学習済み重みをロード
-        (net_weights, voc_classes) = self.loadWeight(weight_fpath)
+        (net_weights, voc_classes) = self.loadWeight(weight_fpath, device)
 
         super().__init__(device, voc_classes)
 
@@ -30,9 +30,9 @@ class SSDModelDetector(SSDModel):
         self.net_.to(self.device_)
         return
     
-    def loadWeight(self, weight_fpath:str) -> Tuple[Any, List[str]]:
+    def loadWeight(self, weight_fpath:str, device:torch.device) -> Tuple[Any, List[str]]:
         # ネットワーク重みをロード
-        net_weights = torch.load(weight_fpath, weights_only=True) # FutureWarning: You are using torch.load..対策
+        net_weights = torch.load(weight_fpath, weights_only=True, map_location=device) # FutureWarning: You are using torch.load..対策
 
         # クラス名リスト（voc_classes）をロード
         voc_classes:List[str] = []
@@ -45,7 +45,7 @@ class SSDModelDetector(SSDModel):
 
         return (net_weights, voc_classes)
 
-    def predict(self, img_procs:List[ImageProc], img_org:np.ndarray, data_confidence_level:float=0.5) -> List[DetResult]:
+    def predict(self, img_procs:List[ImageProc], img_org:np.ndarray, data_confidence_level:float=0.5, overlap:float=0.45) -> List[DetResult]:
         
         # 複数範囲の画像バッチ化
         transform = DataTransform(self.input_size_, self.color_mean_)
@@ -94,11 +94,11 @@ class SSDModelDetector(SSDModel):
 
         if len(img_procs) > 1:
             # [検出領域が複数の場合] 重複領域での重複枠を取り除く
-            det_results = self.nmSuppression(det_results)
+            det_results = self.nmSuppression(det_results, overlap)
 
         return det_results
 
-    def nmSuppression(self, det_results:List[DetResult]) -> List[DetResult]:
+    def nmSuppression(self, det_results:List[DetResult], iou:float=0.45) -> List[DetResult]:
         det_results_sup:List[DetResult] = []
 
         for cls_name in self.voc_classes_:
@@ -108,7 +108,7 @@ class SSDModelDetector(SSDModel):
                 bb_i_cls  = torch.from_numpy( np.array([x.bbox_  for x in det_results_cls]) )
                 score_cls = torch.from_numpy( np.array([x.score_ for x in det_results_cls]) )
 
-                (ids, count) = nm_suppression(bb_i_cls, score_cls)
+                (ids, count) = nm_suppression(bb_i_cls, score_cls, overlap=iou)
                 
                 bb_i_cls_sup  = bb_i_cls[ids[:count]].cpu().detach().numpy().tolist()
                 score_cls_sup = score_cls[ids[:count]].cpu().detach().numpy().tolist()
@@ -154,7 +154,7 @@ class LogEvalAnno(Logger):
 
         return
 
-def main_play_movie(img_procs:List[ImageProc], ssd_model:SSDModelDetector, movie_fpath:str, play_fps:float, conf:float):
+def main_play_movie(img_procs:List[ImageProc], ssd_model:SSDModelDetector, movie_fpath:str, play_fps:float, conf:float, overlap:float):
 
     # 画像出力用フォルダ作成
     output_imgdir_name = os.path.splitext(os.path.basename(movie_fpath))[0]
@@ -186,7 +186,7 @@ def main_play_movie(img_procs:List[ImageProc], ssd_model:SSDModelDetector, movie
                 time_s = time.perf_counter()
 
                 # SSD物体検出
-                det_results = ssd_model.predict(img_procs, img_org)
+                det_results = ssd_model.predict(img_procs, img_org, conf, overlap)
 
                 # 検出結果描画
                 for img_proc in img_procs:
@@ -216,7 +216,7 @@ def main_play_movie(img_procs:List[ImageProc], ssd_model:SSDModelDetector, movie
 
     return
 
-def main_det_img(img_procs:List[ImageProc], ssd_model:SSDModelDetector, img_fpath:str, conf:float):
+def main_det_img(img_procs:List[ImageProc], ssd_model:SSDModelDetector, img_fpath:str, conf:float, overlap:float):
 
     # 結果出力フォルダ作成
     output_imgdir_path = Logger.createOutputDir(ssd_model.device_.type, "")
@@ -229,7 +229,7 @@ def main_det_img(img_procs:List[ImageProc], ssd_model:SSDModelDetector, img_fpat
         time_s = time.perf_counter()
 
         # SSD物体検出
-        det_results = ssd_model.predict(img_procs, img_org)
+        det_results = ssd_model.predict(img_procs, img_org, conf, overlap)
 
         # 検出結果描画
         for img_proc in img_procs:
@@ -334,7 +334,7 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
     return
 
 
-def main(media_fpath:str, play_fps:float, weight_fpath:str, img_procs:List[ImageProc]):
+def main(media_fpath:str, play_fps:float, weight_fpath:str, img_procs:List[ImageProc], conf:float, overlap:float):
 
     if (os.path.isfile(media_fpath) == False) and (os.path.isdir(media_fpath) == False):
         print("Error: ", media_fpath, " is nothing.")
@@ -350,15 +350,15 @@ def main(media_fpath:str, play_fps:float, weight_fpath:str, img_procs:List[Image
         media_fname:str = os.path.basename(media_fpath)
         if ".mp4" in media_fname:
             # 動画再生
-            main_play_movie(img_procs,ssd_model, media_fpath, play_fps, 0.5)
+            main_play_movie(img_procs,ssd_model, media_fpath, play_fps, conf, overlap)
 
         elif (".jpg" in media_fname) or (".png" in media_fname):
             # 画像
-            main_det_img(img_procs, ssd_model, media_fpath, 0.5)
+            main_det_img(img_procs, ssd_model, media_fpath, conf, overlap)
         
         elif os.path.isdir(media_fpath) == True:
             # ディレクトリ
-            main_play_imageset(ssd_model, media_fpath, 0.5)
+            main_play_imageset(ssd_model, media_fpath, conf)
 
         else:
             print("No support ext [", media_fname, "]")
@@ -371,10 +371,16 @@ if __name__ == "__main__":
     weight_fpath = "./weights/ssd_best_od_cars.pth"
 
     # 検出範囲
-    img_procs = [ImageProc(180, 250, 780, 550), ImageProc(680, 250, 1280, 550)] # (1280x720を)600x300に切り出し(左右2領域)
+    img_procs = [ImageProc(230, 250, 530, 550), ImageProc(480, 200, 780, 500), ImageProc(730, 200, 1030, 500), ImageProc(980, 250, 1280, 550)] # (1280x720を)300x300に切り出し
+    # img_procs = [ImageProc(200, 200, 550, 550), ImageProc(500, 200, 850, 550), ImageProc(800, 200, 1150, 550), ImageProc(930, 200, 1280, 550)] # (1280x720を)350x350に切り出し
+    # img_procs = [ImageProc(230, 250, 530, 550), ImageProc(480, 250, 780, 550), ImageProc(730, 250, 1030, 550), ImageProc(980, 250, 1280, 550)] # (1280x720を)300x300に切り出し
+    # img_procs = [ImageProc(180, 250, 480, 550), ImageProc(380, 250, 680, 550), ImageProc(580, 250, 880, 550), ImageProc(780, 250, 1080, 550), ImageProc(980, 250, 1280, 550)] # (1280x720を)300x300に切り出し
+    # img_procs = [ImageProc(180, 250, 780, 550), ImageProc(680, 250, 1280, 550)] # (1280x720を)600x300に切り出し(左右2領域)
     # img_procs = [ImageProc()] # 全域
 
-    play_fps:float = -1.0
+    conf     = 0.5
+    overlap  = 0.2
+    play_fps = -1.0
 
     if len(args) < 2:
         print("Usage: ", args[0], " [movie/img file path] ([play fps])")
@@ -382,4 +388,4 @@ if __name__ == "__main__":
         if len(args) >= 3:
             play_fps = float(args[2])
 
-        main(args[1], play_fps, weight_fpath, img_procs)
+        main(args[1], play_fps, weight_fpath, img_procs, conf, overlap)
