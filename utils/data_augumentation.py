@@ -114,7 +114,13 @@ class Resize(object):
         self.size = size
 
     def __call__(self, image, boxes=None, labels=None):
-        image = cv2.resize(image, (self.size,self.size), interpolation=cv2.INTER_CUBIC)
+        img_h, img_w, _ = image.shape
+        inter = cv2.INTER_LINEAR
+        if img_w > self.size or img_h > self.size:
+            # [縮小の場合] INTER_AREAで補間
+            inter = cv2.INTER_AREA
+        
+        image = cv2.resize(image, (self.size,self.size), interpolation=inter)
         # image = cv2.resize(image, (self.size,self.size))
         return image, boxes, labels
 
