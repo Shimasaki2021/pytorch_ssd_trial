@@ -85,6 +85,7 @@ class SSDModelTrainerDebug(Logger):
     def outputLogDataSetSummary(self, voc_dataset:VocDataSetMng):
         if self.isOutputLog() == True:
             self.log_fp_.write("\n == dataset info ==\n")
+            self.log_fp_.write(f"  batch_size_train={voc_dataset.batch_size_}, batch_size_val={voc_dataset.batch_size_val_}")
 
             for phase in ["train", "val"]:
                 image_num   = voc_dataset.getImageNum(phase)
@@ -271,7 +272,7 @@ class SSDModelTrainer(SSDModel):
         return
 
 
-def main(num_epochs:int, data_path:str, voc_classes:List[str], freeze_layer:int):
+def main(num_epochs:int, data_path:str, voc_classes:List[str], freeze_layer:int, batch_size:int, test_rate:float):
 
     if os.path.isdir(data_path) == False:
         print("Error: ", data_path, " is nothing.")
@@ -284,7 +285,7 @@ def main(num_epochs:int, data_path:str, voc_classes:List[str], freeze_layer:int)
         ssd_model = SSDModelTrainer(device, voc_classes, freeze_layer)
     
         # データセット作成
-        voc_dataset = VocDataSetMng(data_path, voc_classes, ssd_model.color_mean_, ssd_model.input_size_)
+        voc_dataset = VocDataSetMng(data_path, voc_classes, ssd_model.color_mean_, ssd_model.input_size_, batch_size, test_rate)
         for phase in ["train", "val"]:
             for class_name in voc_dataset.voc_classes_:
                 (obj_num, _, _) = voc_dataset.getAnnoInfo(phase, class_name)
@@ -305,8 +306,11 @@ if __name__ == "__main__":
     freeze_layer = 5
 
     num_epochs = 500
+    batch_size = 16
+    # batch_size = 32
+    test_rate  = 0.1
 
     if len(args) >= 2:
         num_epochs = int(args[1])
 
-    main(num_epochs, data_path, voc_classes, freeze_layer)
+    main(num_epochs, data_path, voc_classes, freeze_layer, batch_size, test_rate)

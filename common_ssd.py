@@ -210,7 +210,14 @@ class ImageProc:
 
 class VocDataSetMng:
 
-    def __init__(self, data_path:str, voc_classes:List[str], color_mean:List[int], input_size:int):
+    def __init__(self, data_path:str, voc_classes:List[str], color_mean:List[int], input_size:int, batch_size:int, test_rate:float):
+
+        self.batch_size_ = batch_size
+        self.test_rate_  = test_rate
+        self.batch_size_val_ = int(float(batch_size) * test_rate)
+
+        if self.batch_size_val_ < 3:
+            self.batch_size_val_ = 3
 
         # データのリストを取得
         self.data_path_ = data_path
@@ -222,7 +229,7 @@ class VocDataSetMng:
         parse_anno = Anno_xml2list(voc_classes)
         filename_list = [f for f in filename_list_all if parse_anno.isExistObject(f"{data_path}/{f}.xml") == True]
 
-        (filename_list_train, filename_list_val) = train_test_split(filename_list, test_size=0.1)
+        (filename_list_train, filename_list_val) = train_test_split(filename_list, test_size=test_rate)
 
         train_img_list  = [f"{data_path}/{f}.jpg" for f in filename_list_train]
         train_anno_list = [f"{data_path}/{f}.xml" for f in filename_list_train]
@@ -245,11 +252,11 @@ class VocDataSetMng:
 
         # DataLoaderを作成する
         train_dataloader = data.DataLoader(self.train_dataset_, 
-                                        batch_size=32, 
+                                        batch_size=self.batch_size_, 
                                         shuffle=True, 
                                         collate_fn=od_collate_fn)
         val_dataloader   = data.DataLoader(self.val_dataset_, 
-                                        batch_size=3, 
+                                        batch_size=self.batch_size_val_, 
                                         shuffle=False, 
                                         collate_fn=od_collate_fn)
 

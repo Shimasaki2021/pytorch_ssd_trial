@@ -33,6 +33,7 @@ class SSDModelDetector(SSDModel):
     def loadWeight(self, weight_fpath:str, device:torch.device) -> Tuple[Any, List[str]]:
         # ネットワーク重みをロード
         net_weights = torch.load(weight_fpath, weights_only=True, map_location=device) # FutureWarning: You are using torch.load..対策
+        # net_weights = torch.load(weight_fpath, weights_only=True) # FutureWarning: You are using torch.load..対策
 
         # クラス名リスト（voc_classes）をロード
         voc_classes:List[str] = []
@@ -371,7 +372,9 @@ if __name__ == "__main__":
     weight_fpath = "./weights/ssd_best_od_cars.pth"
 
     # 検出範囲
-    img_procs = [ImageProc(230, 250, 530, 550), ImageProc(480, 200, 780, 500), ImageProc(730, 200, 1030, 500), ImageProc(980, 250, 1280, 550)] # (1280x720を)300x300に切り出し
+    img_procs = [ImageProc(180, 250, 530, 600), ImageProc(480, 200, 780, 500), ImageProc(730, 200, 1030, 500), ImageProc(930, 250, 1280, 600)] # (1280x720を)300x300/350x350に切り出し
+    # img_procs = [ImageProc(180, 150, 630, 600), ImageProc(580, 200, 880, 500), ImageProc(830, 150, 1280, 600)] # (1280x720を)300x300/450x450に切り出し
+    # img_procs = [ImageProc(230, 250, 530, 550), ImageProc(480, 200, 780, 500), ImageProc(730, 200, 1030, 500), ImageProc(980, 250, 1280, 550)] # (1280x720を)300x300に切り出し
     # img_procs = [ImageProc(200, 200, 550, 550), ImageProc(500, 200, 850, 550), ImageProc(800, 200, 1150, 550), ImageProc(930, 200, 1280, 550)] # (1280x720を)350x350に切り出し
     # img_procs = [ImageProc(230, 250, 530, 550), ImageProc(480, 250, 780, 550), ImageProc(730, 250, 1030, 550), ImageProc(980, 250, 1280, 550)] # (1280x720を)300x300に切り出し
     # img_procs = [ImageProc(180, 250, 480, 550), ImageProc(380, 250, 680, 550), ImageProc(580, 250, 880, 550), ImageProc(780, 250, 1080, 550), ImageProc(980, 250, 1280, 550)] # (1280x720を)300x300に切り出し
