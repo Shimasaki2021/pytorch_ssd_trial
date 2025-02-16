@@ -15,14 +15,7 @@ import torch.utils.data as data
 from sklearn.model_selection import train_test_split
 
 from utils.ssd_model import VOCDataset, DataTransform, Anno_xml2list, od_collate_fn
-
-def calcJaccard(bbox_a:np.ndarray, bbox_b:np.ndarray) -> float:
-    w = min(bbox_a[2], bbox_b[2]) - max(bbox_a[0], bbox_b[0])
-    h = min(bbox_a[3], bbox_b[3]) - max(bbox_a[1], bbox_b[1])
-    inter = max(w, 0) * max(h, 0)
-    area_a = (bbox_a[2] - bbox_a[0]) * (bbox_a[3] - bbox_a[1])
-    area_b = (bbox_b[2] - bbox_b[0]) * (bbox_b[3] - bbox_b[1])
-    return inter / (area_a + area_b - inter)
+from utils.data_augumentation import jaccard_numpy
 
 class DetResult:
     def __init__(self, class_name:str, bbox:np.ndarray, score:float):
@@ -50,10 +43,12 @@ class AnnoData:
         jaccard_max              = jaccard_thres
         det_result_max:DetResult = None
 
-        for det in det_results:
-            jaccard_val = calcJaccard(self.bbox_, det.bbox_)
+        det_bbox     = np.array([det.bbox_ for det in det_results])
+        jaccard_vals = jaccard_numpy(det_bbox, self.bbox_)
+
+        for jaccard_val, det in zip(jaccard_vals, det_results):
             if jaccard_val > jaccard_max:
-                jaccard_max = jaccard_val
+                jaccard_max    = jaccard_val
                 det_result_max = det
 
         return (det_result_max, jaccard_max)
@@ -359,9 +354,9 @@ class SSDModel:
         self.device_      = device
         self.voc_classes_ = voc_classes
 
-        torch.manual_seed(1234)
-        np.random.seed(1234)
-        random.seed(1234)
+        # torch.manual_seed(1234)
+        # np.random.seed(1234)
+        # random.seed(1234)
 
         return
 
