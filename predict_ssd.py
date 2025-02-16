@@ -372,7 +372,8 @@ if __name__ == "__main__":
     weight_fpath = "./weights/ssd_best_od_cars.pth"
 
     # 検出範囲
-    img_procs = [ImageProc(180, 250, 530, 600), ImageProc(480, 200, 780, 500), ImageProc(730, 200, 1030, 500), ImageProc(930, 250, 1280, 600)] # (1280x720を)300x300/350x350に切り出し
+    img_procs = [ImageProc(110, 250, 530, 600), ImageProc(480, 200, 780, 500), ImageProc(730, 200, 1030, 500), ImageProc(930, 250, 1280, 600)] # (1280x720を)300x300/350x350に切り出し
+    # img_procs = [ImageProc(180, 250, 530, 600), ImageProc(480, 200, 780, 500), ImageProc(730, 200, 1030, 500), ImageProc(930, 250, 1280, 600)] # (1280x720を)300x300/350x350に切り出し
     # img_procs = [ImageProc(180, 150, 630, 600), ImageProc(580, 200, 880, 500), ImageProc(830, 150, 1280, 600)] # (1280x720を)300x300/450x450に切り出し
     # img_procs = [ImageProc(230, 250, 530, 550), ImageProc(480, 200, 780, 500), ImageProc(730, 200, 1030, 500), ImageProc(980, 250, 1280, 550)] # (1280x720を)300x300に切り出し
     # img_procs = [ImageProc(200, 200, 550, 550), ImageProc(500, 200, 850, 550), ImageProc(800, 200, 1150, 550), ImageProc(930, 200, 1280, 550)] # (1280x720を)350x350に切り出し
