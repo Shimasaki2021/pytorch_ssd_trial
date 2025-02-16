@@ -85,7 +85,7 @@ class SSDModelTrainerDebug(Logger):
     def outputLogDataSetSummary(self, voc_dataset:VocDataSetMng):
         if self.isOutputLog() == True:
             self.log_fp_.write("\n == dataset info ==\n")
-            self.log_fp_.write(f"  batch_size_train={voc_dataset.batch_size_}, batch_size_val={voc_dataset.batch_size_val_}")
+            self.log_fp_.write(f"  batch_size_train={voc_dataset.batch_size_}, batch_size_val={voc_dataset.batch_size_val_}\n")
 
             for phase in ["train", "val"]:
                 image_num   = voc_dataset.getImageNum(phase)
