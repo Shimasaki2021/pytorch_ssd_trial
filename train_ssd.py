@@ -85,7 +85,7 @@ class SSDModelTrainerDebug(Logger):
     def outputLogDataSetSummary(self, voc_dataset:VocDataSetMng):
         if self.isOutputLog() == True:
             self.log_fp_.write("\n == dataset info ==\n")
-            self.log_fp_.write(f"  batch_size_train={voc_dataset.batch_size_}, batch_size_val={voc_dataset.batch_size_val_}\n")
+            self.log_fp_.write(f"batch_size: train={voc_dataset.batch_size_}, val={voc_dataset.batch_size_val_}\n\n")
 
             for phase in ["train", "val"]:
                 image_num   = voc_dataset.getImageNum(phase)
@@ -121,6 +121,12 @@ class SSDModelTrainer(SSDModel):
         vgg_weights = torch.load("./weights/vgg16_reducedfc.pth", weights_only=True) # FutureWarning: You are using torch.load..対策
         self.net_.vgg.load_state_dict(vgg_weights)
 
+        # VGGの重みをfreeze
+        for idx,module in enumerate(self.net_.vgg):
+            if idx <= freeze_layer:
+                for param in module.parameters():
+                    param.requires_grad = False
+
         # SSDのextras, loc, confには、Heの初期値を適用
         self.net_.extras.apply(SSDModelTrainer.initWeight)
         self.net_.loc.apply(SSDModelTrainer.initWeight)
@@ -136,12 +142,6 @@ class SSDModelTrainer(SSDModel):
         #self.optimizer_ = optim.SGD(self.net_.parameters(), lr=1e-3, momentum=0.9, weight_decay=5e-4)
         #self.optimizer_ = optim.Adam(self.net_.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
         self.optimizer_ = optim.AdamW(self.net_.parameters(), lr=0.001)
-
-        # VGGの重みをfreeze
-        for idx,module in enumerate(self.net_.vgg):
-            if idx <= freeze_layer:
-                for param in module.parameters():
-                    param.requires_grad = False
 
         return
     
