@@ -111,9 +111,9 @@ class SSDModelDetector(SSDModel):
 
                 (ids, count) = nm_suppression(bb_i_cls, score_cls, overlap=iou)
                 
-                bb_i_cls_sup  = bb_i_cls[ids[:count]].cpu().detach().numpy().tolist()
-                score_cls_sup = score_cls[ids[:count]].cpu().detach().numpy().tolist()
-                
+                bb_i_cls_sup  = bb_i_cls[ids[:count]].cpu().detach().numpy()
+                score_cls_sup = score_cls[ids[:count]].cpu().detach().numpy()
+
                 for bb_i, score in zip(bb_i_cls_sup, score_cls_sup):
                     det_results_sup.append(DetResult(cls_name, bb_i, score))
 
