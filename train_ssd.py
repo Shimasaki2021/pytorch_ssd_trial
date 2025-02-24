@@ -300,14 +300,22 @@ def main(num_epochs:int, data_path:str, voc_classes:List[str], freeze_layer:int,
 if __name__ == "__main__":
     args = sys.argv
 
+    # 学習データを置いたディレクトリ
     data_path    = "./data/od_cars"
-    # voc_classes  = ["car"]
+
+    # 学習クラス名
     voc_classes  = ["car","number"]
+
+    # SSDモデルで重みを更新しないレイヤー（入力層～freeze_layer層までの重みは更新しない）
     freeze_layer = 5
 
+    # epoch数（引数指定なしの場合のDefault値）
     num_epochs = 500
+
+    # バッチサイズ
     batch_size = 16
-    # batch_size = 32
+    
+    # 検証用画像の割合（全体のtest_rateを検証用画像にする）
     test_rate  = 0.1
 
     if len(args) >= 2:

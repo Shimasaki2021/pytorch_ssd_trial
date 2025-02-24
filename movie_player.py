@@ -69,13 +69,15 @@ def main(movie_fpath:str, play_fps:float, img_procs:List[ImageProc]):
 if __name__ == "__main__":
     args = sys.argv
 
-    img_procs = [ImageProc(180, 150, 530, 500), ImageProc(580, 200, 880, 500), ImageProc(930, 250, 1280, 600)]
-    # img_procs = [ImageProc(180, 100, 780, 600)]
-    # img_procs = [ImageProc(930, 250, 1280, 600)]
-    # img_procs = [ImageProc(580, 200, 880, 500),ImageProc(930, 250, 1230, 550)]
-    # img_procs = [ImageProc(580, 200, 880, 500),ImageProc(980, 250, 1280, 550)]
-    # img_procs = [ImageProc(500, 200, 1100, 500),ImageProc(680, 250, 1280, 550)]
-    # img_proc = ImageProc(680, 250, 1280, 550)
+    # 切り出し領域
+    img_procs = [ImageProc(180, 150, 530, 500), 
+                 ImageProc(580, 200, 880, 500), 
+                 ImageProc(930, 250, 1280, 600)]
+
+    # 切り出ししない場合は以下を有効化
+    # img_procs = [ImageProc()] 
+
+
     play_fps = -1.0
 
     if len(args) < 2:

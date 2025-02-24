@@ -1,0 +1,26 @@
+<annotation>
+	<folder>od_cars</folder>
+	<filename>od_cars_add8_2_urban_exp_180_150_350x350_F22800.jpg</filename>
+	<path>/home/simasaki/work/pytorch_ssd_trial/data/od_cars/od_cars_add8_2_urban_exp_180_150_350x350_F22800.jpg</path>
+	<source>
+		<database>Unknown</database>
+	</source>
+	<size>
+		<width>350</width>
+		<height>350</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>car</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<bndbox>
+			<xmin>263</xmin>
+			<ymin>150</ymin>
+			<xmax>305</xmax>
+			<ymax>193</ymax>
+		</bndbox>
+	</object>
+</annotation>

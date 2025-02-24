@@ -8,5 +8,5 @@ output.cuda/
 __pycache__/
 test.ipynb
 test2.ipynb
-data/od_cars_sample/
 data/od_dbg/
+weights/vgg16_reducedfc.pth
