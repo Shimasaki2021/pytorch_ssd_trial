@@ -297,6 +297,8 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
 
         if img_org is not None:
 
+            print(f"[{idx}/{num_img}] proc: {img_fpath}...", )
+
             # SSD物体検出
             det_results = ssd_model.predict([img_proc], img_org, conf)
 

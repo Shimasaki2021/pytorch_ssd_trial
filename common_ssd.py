@@ -43,13 +43,14 @@ class AnnoData:
         jaccard_max              = jaccard_thres
         det_result_max:DetResult = None
 
-        det_bbox     = np.array([det.bbox_ for det in det_results])
-        jaccard_vals = jaccard_numpy(det_bbox, self.bbox_)
+        if len(det_results) > 0:
+            det_bbox     = np.array([det.bbox_ for det in det_results])
+            jaccard_vals = jaccard_numpy(det_bbox, self.bbox_)
 
-        for jaccard_val, det in zip(jaccard_vals, det_results):
-            if jaccard_val > jaccard_max:
-                jaccard_max    = jaccard_val
-                det_result_max = det
+            for jaccard_val, det in zip(jaccard_vals, det_results):
+                if jaccard_val > jaccard_max:
+                    jaccard_max    = jaccard_val
+                    det_result_max = det
 
         return (det_result_max, jaccard_max)
 
@@ -354,9 +355,15 @@ class SSDModel:
         self.device_      = device
         self.voc_classes_ = voc_classes
 
-        # torch.manual_seed(1234)
-        # np.random.seed(1234)
-        # random.seed(1234)
+        random_seed = 1234
+
+        torch.manual_seed(random_seed)
+
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(random_seed)
+
+        np.random.seed(random_seed)
+        random.seed(random_seed)
 
         return
 
