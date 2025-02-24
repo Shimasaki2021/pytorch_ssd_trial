@@ -49,7 +49,7 @@ img_procs = [ImageProc(110, 250, 530, 600),
              ImageProc(930, 250, 1280, 600)] 
 ```
 
-なお、学習済みSSD重みデータ（weights/ssd_best_od_cars.pth）は、車を検出対象に入れているものの、側面は意図的に外してます（※）。そのため、真横の車は検出できないことがあるので、ご了承ください。
+なお、学習済みSSD重みデータ（ssd_best_od_cars.pth）は、車を検出対象に入れているものの、側面は意図的に外してます（※）。そのため、真横の車は検出できないことがあるので、ご了承ください。
 
 （※）∵側面を入れると防音壁の誤検出が取れない。また、ナンバープレートを自動でぼかすアプリを作りたくて学習したデータのため、側面は不要。
 
@@ -70,7 +70,7 @@ https://s3.amazonaws.com/amdegroot-models/vgg16_reducedfc.pth
 
 検出対象が映っている画像をできるだけたくさん集め、検出対象を囲む枠をxmlファイルで作成します。labelImgで作成します。
 
-学習済みSSD重みデータ（weights/ssd_best_od_cars.pth）を学習したときのデータの一部を、data/od_cars_sample/　に置きました。
+学習済みSSD重みデータ（weights/ssd_best_od_cars.pth）を学習したときのデータの一部をdata/od_cars_sample/　に置きましたので、参考にしていただけたらと思います（ナンバープレートが映った画像が多く含まれるので全部は公開できません。。すみません）。
 
 labelImgは、以下リンクで構築可能なdockerコンテナにインストール済みです。今回のソースもそのまま動かせますので、よかったらご活用ください。
 
@@ -127,16 +127,16 @@ test_rate  = 0.1
 ./train_ssd.py [動画(mp4) or 画像ファイルパス] ([epoch数])
 ```
 
-学習にかかる時間は、PC環境や学習データの数に大きく依存します。
+学習にかかる時間は、PC環境や学習データ数に大きく依存します。
 
 参考までに、以下PC環境、学習データ数で、ssd_best_od_cars.pthを学習するのに、約3時間かかりました。
 
 - PC環境
-  - CPU: AMD Ryzen 7 3700X
+  - CPU: AMD Ryzen 7 3700X (3.60 GHz)
   - GPU: NVIDIA GeForce GTX 1660 SUPER
-  - OS: Windows 11 Home (23H2） , WSL2 + Ubuntu24.04
+  - OS: Windows 11 Home (24H2） , WSL2 + Ubuntu24.04
 
-- 学習データ数
+- 学習データ数（※検証用（1割）込み）
   - 画像数: 530
   - 物体数（枠の数）: 1394　（車：857、ナンバープレート：537）
 
