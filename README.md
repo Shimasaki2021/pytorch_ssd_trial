@@ -8,14 +8,14 @@ pytorch ssdの転移学習を実行するソース一式です。
 | utils/ | SSDモデル実装等のソース（モデルはVGG16ベースのSSD300）  |
 | common_ssd.py | 推論/学習共通部分のソース |
 | train_ssd.py | 学習実行ソース |
-| predict_ssd.py | 推論実行ソース |
+| predict_ssd.py | 検知（推論）実行ソース |
 | movie_player.py | 動画(mp4)から学習用画像切り出しツール(ソース) |
 | data/od_cars_org_F00000.jpg | テストデータ（推論用画像） |
 | data/od_cars_sample/ | テストデータ（学習用画像、アノテーションデータ） |
 | weights/ssd_best_od_cars.pth | 学習済みSSD重みデータ(車、ナンバープレートを学習済) |
 | weights/ssd_best_od_cars_classes.txt | ssd_best_od_cars.pthで学習したクラス名 |
 | python_version.txt | 動作確認したpythonバージョン |
-| requires.txt | 動作確認したpythonモジュールのバージョン |
+| python_module_version.txt | 動作確認したpythonモジュールのバージョン |
 
 SSDモデル実装等のソース(utils以下のソース)は、以下掲載ソースをベースに、上述のpythonバージョンで動作するよう一部修正したものです。
 
@@ -38,7 +38,7 @@ https://github.com/YutaroOgawa/pytorch_advanced/tree/master/2_objectdetection/ut
 
 入力画像/動画の解像度は1280x800、検出対象は車＆ナンバープレートの想定で、predict_ssd.py末尾の以下コードで検出範囲を設定しています（車がいそうな領域を4分割）。
 
-異なる解像度の画像や、検出対象がいそうな領域が違う場合は、以下を適宜編集してご利用ください。現状、境界値チェックを入れれておらず、はみ出すと落ちてしまうので、ご注意ください。
+異なる解像度の画像や、検出対象がいそうな領域が違う場合は、以下の検出範囲を適宜編集してご利用ください。現状、境界値チェックを入れれておらず、はみ出すと落ちてしまうので、ご注意ください。
 
 ```predict_ssd.py
 # 検出範囲
@@ -55,7 +55,7 @@ img_procs = [ImageProc(110, 250, 530, 600),
 
 ## 学習実行方法
 
-以下を実行
+以下を実行します。
 
 1. VGG16の学習済み重みをダウンロード
 1. 学習データ作成（アノテーション）
@@ -70,9 +70,9 @@ https://s3.amazonaws.com/amdegroot-models/vgg16_reducedfc.pth
 
 検出対象が映っている画像をできるだけたくさん集め、検出対象を囲む枠をxmlファイルで作成します。labelImgで作成します。
 
-学習済みSSD重みデータ（weights/ssd_best_od_cars.pth）を学習したときのデータの一部をdata/od_cars_sample/　に置きましたので、参考にしていただけたらと思います（ナンバープレートが映った画像が多く含まれるので全部は公開できません。。すみません）。
+学習済みSSD重みデータ（weights/ssd_best_od_cars.pth）を学習したときのデータの一部をdata/od_cars_sample/　に置きましたので、参考にしていただけたらと思います（ナンバープレートが映った画像が多く含まれるので全部は公開できません。。）。
 
-labelImgは、以下リンクで構築可能なdockerコンテナにインストール済みです。今回のソースもそのまま動かせますので、よかったらご活用ください。
+labelImgは、以下リンクのファイル一式から構築可能なdockerコンテナにインストール済みです。今回のソースもそのまま動かせますので、よかったらご活用ください。
 
 https://github.com/Shimasaki2021/docker_pytorch
 
@@ -85,7 +85,7 @@ https://github.com/Shimasaki2021/docker_pytorch
 ./movie_player.py data/NNF_230504-092531.mp4 0.5
 ```
 
-切り出し領域は、movie_player.py 末尾付近の以下を適宜編集してご利用ください。predict_ssd.pyと同じ設定にする必要はありません。
+切り出し領域は、movie_player.py 末尾付近の以下を適宜編集してご利用ください。predict_ssd.pyの検出範囲と同じ設定にする必要はありません。
 
 ```movie_player.py
 # 切り出し領域
