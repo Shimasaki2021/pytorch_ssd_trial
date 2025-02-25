@@ -68,13 +68,17 @@ https://s3.amazonaws.com/amdegroot-models/vgg16_reducedfc.pth
 
 ### 2. 学習データ作成（アノテーション）
 
-検出対象が映っている画像をできるだけたくさん集め、検出対象を囲む枠をxmlファイルで作成します。labelImgで作成します。
+検出対象が映っている画像をできるだけたくさん集め、検出対象を囲む枠をxmlファイルで作成します。私は、labelImgで作成しました。
 
 学習済みSSD重みデータ（weights/ssd_best_od_cars.pth）を学習したときのデータの一部をdata/od_cars_sample/　に置きましたので、参考にしていただけたらと思います（ナンバープレートが映った画像が多く含まれるので全部は公開できません。。）。
+
+data/od_cars_sampleは、labelImgでopenすればアノテーション結果を確認／編集できます（下図）。xmlファイルにはファイルの絶対パスが書かれてますが、このパス以外に置いても問題なく開けます。
 
 labelImgは、以下リンクのファイル一式から構築可能なdockerコンテナにインストール済みです。今回のソースもそのまま動かせますので、よかったらご活用ください。
 
 https://github.com/Shimasaki2021/docker_pytorch
+
+![labelImg例](./fig/labelImg_open_od_cars_sample.png)
 
 画像を動画(mp4)から収集する場合は、movie_player.py を使って画像切り出しができます。
 
