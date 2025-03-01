@@ -258,6 +258,7 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
     img_proc = ImageProc()
 
     # 画像出力用フォルダ作成
+    img_dir = img_dir.replace("\\","/")
     if img_dir[-1] == "/":
         output_imgdir_name = os.path.basename(os.path.dirname(img_dir))
     else:
