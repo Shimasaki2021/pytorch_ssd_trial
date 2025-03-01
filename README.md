@@ -17,9 +17,12 @@ pytorch ssdの転移学習を実行するソース一式です。
 | python_version.txt | 動作確認したpythonバージョン |
 | python_module_version.txt | 動作確認したpythonモジュールのバージョン |
 
-SSDモデル実装等のソース(utils以下のソース)は、以下掲載ソースをベースに、上述のpythonバージョンで動作するよう一部修正したものです。
+utils以下のソースは、以下掲載ソースをベースに、上述のpythonバージョンで動作するよう一部修正したものです。
 
-https://github.com/YutaroOgawa/pytorch_advanced/tree/master/2_objectdetection/utils
+https://github.com/hituji1012/od_test
+
+参考までに、ソースのクラス図です（主要クラスのみ。Debugクラス等は省略）。
+![クラス図](./fig/soft_structure.png)
 
 ## 検知（推論）実行方法
 

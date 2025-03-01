@@ -1,0 +1,76 @@
+@startuml soft_structure
+
+hide empty members
+allowmixing
+
+title ソフト構造(クラス図)
+
+' package data {
+'     database "画像" as ImageFile
+'     database "正解データ(xml)" as AnnoFile
+'     database "VGG16学習済みパラメータ" as vgg16_reducefdc
+
+' }
+
+
+class AdamW << optimizer >>
+
+package utils {
+    package "ssd_model.py" as ssd_model {
+        class SSD {
+            vgg
+            extras
+            loc
+            conf
+        }
+        class VOCDataset
+        class DataTransform
+        class Anno_xml2list
+        class MultiBoxLoss
+    }
+}
+
+package "common_ssd.py" as common_ssd {
+    class SSDModel
+    class VocDataSetMng
+    class ImageProc
+}
+
+package "train_ssd.py" as train_ssd {
+    class SSDModelTrainer {
+        train() : 学習実行
+    }
+}
+
+package "predict_ssd.py" as predict_ssd {
+    class SSDModelDetector {
+        predict() : 検知（推論）実行
+    }
+}
+
+SSDModel <|- SSDModelTrainer
+SSDModel <|- SSDModelDetector
+
+SSDModelTrainer - DataLoader : 画像、正解データ取得 >
+' SSD -- vgg16_reducefdc : load >
+SSDModelTrainer - SSD : 順伝播\n(forward) >
+SSDModelTrainer - MultiBoxLoss : 損失計算,逆伝播\n(backward) >
+SSDModelTrainer -d- AdamW : パラメータ更新 >
+MultiBoxLoss .. SSD : 勾配算出? >
+AdamW .. SSD : パラメータ更新? >
+
+SSDModelDetector - ImageProc : 検出範囲切り出し, 座標変換 >
+SSDModelDetector -- DataTransform : 画像前処理 >
+SSDModelDetector - SSD : 順伝播\n(forward) >
+
+
+VocDataSetMng *-- VOCDataset
+VocDataSetMng *-- DataLoader
+
+DataLoader -- VOCDataset : 画像、正解データ取得 >
+VOCDataset - DataTransform : 画像前処理 >
+VOCDataset -d- Anno_xml2list : 正解データ取得\n(xml load) > 
+' Anno_xml2list -- AnnoFile : load >
+' VOCDataset -- ImageFile : load >
+
+@enduml
