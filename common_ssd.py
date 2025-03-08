@@ -110,7 +110,24 @@ class ImageProc:
         bb_i = bb_f.astype(np.int64)
         return bb_i
 
-    def getAnnoData(self, anno_file:str, parse_anno:Anno_xml2list, voc_classes:List[str], img_w:int, img_h:int) -> List[AnnoData]:
+    def drawDetArea(self, img_org:np.ndarray, pen:DrawPen) -> np.ndarray:
+
+        if self.is_no_proc_ == False:
+            # 検出範囲を描画
+            cv2.rectangle(img_org, (self.darea_lu_x_, self.darea_lu_y_), 
+                                (self.darea_rb_x_, self.darea_rb_y_), 
+                                self.draw_col_darea_, pen.thick_)
+            ImageProc.drawText(img_org, "det area", 
+                                        (self.darea_lu_x_, self.darea_rb_y_+15), 
+                                        pen.char_size_, self.draw_col_darea_, pen.thick_, False)
+        return img_org
+
+    def __str__(self) -> str:
+        ret_str = f"{self.darea_lu_x_}_{self.darea_lu_y_}_{self.darea_w_}x{self.darea_h_}"
+        return ret_str
+
+    @staticmethod
+    def getAnnoData(anno_file:str, parse_anno:Anno_xml2list, voc_classes:List[str], img_w:int, img_h:int) -> List[AnnoData]:
         # anno_list: [[xmin, ymin, xmax, ymax, label_ind], ... ]
         anno_list = parse_anno(anno_file, img_w, img_h)
 
@@ -124,8 +141,9 @@ class ImageProc:
             ret_results.append(AnnoData(label_name, bb_i))
 
         return ret_results
-                     
-    def drawResultSummary(self, img_org:np.ndarray, frame_no:int, frame_num:int, dev_type:str, time_proc_sec:float, pen:DrawPen) -> np.ndarray:
+
+    @staticmethod
+    def drawResultSummary(img_org:np.ndarray, frame_no:int, frame_num:int, dev_type:str, time_proc_sec:float, pen:DrawPen) -> np.ndarray:
         # FPS等を描画
         str_frame = ""
         if frame_num > 0:
@@ -138,16 +156,8 @@ class ImageProc:
         
         return img_org
 
-    def drawResultDet(self, img_org:np.ndarray, det_results:List[DetResult], pen:DrawPen) -> np.ndarray:
-
-        if self.is_no_proc_ == False:
-            # 検出範囲を描画
-            cv2.rectangle(img_org, (self.darea_lu_x_, self.darea_lu_y_), 
-                                (self.darea_rb_x_, self.darea_rb_y_), 
-                                self.draw_col_darea_, pen.thick_)
-            ImageProc.drawText(img_org, "det area", 
-                                        (self.darea_lu_x_, self.darea_rb_y_+15), 
-                                        pen.char_size_, self.draw_col_darea_, pen.thick_, False)
+    @staticmethod
+    def drawResultDet(img_org:np.ndarray, det_results:List[DetResult], pen:DrawPen) -> np.ndarray:
 
         for det in det_results:
             display_txt = f"{det.class_name_}:{det.score_:.2f}"
@@ -167,7 +177,8 @@ class ImageProc:
 
         return img_org
 
-    def drawAnnoData(self, img_org:np.ndarray, anno_data:List[AnnoData], pen:DrawPen) -> np.ndarray:
+    @staticmethod
+    def drawAnnoData(img_org:np.ndarray, anno_data:List[AnnoData], pen:DrawPen) -> np.ndarray:
 
         alpha = 0.6
         img_cp = img_org.copy()
@@ -187,10 +198,6 @@ class ImageProc:
         img_org = cv2.addWeighted(img_cp, alpha, img_org, 1.0-alpha, 0)
 
         return img_org
-
-    def __str__(self) -> str:
-        ret_str = f"{self.darea_lu_x_}_{self.darea_lu_y_}_{self.darea_w_}x{self.darea_h_}"
-        return ret_str
 
     @staticmethod
     def drawText(img:np.ndarray, text:str, loc:cv2.typing.Point, scale:float, col:cv2.typing.Scalar, thick:int, is_bound:bool):

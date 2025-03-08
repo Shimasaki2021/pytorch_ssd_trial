@@ -200,14 +200,17 @@ def main_play_movie(img_procs:List[ImageProc], ssd_model:SSDModelDetector, movie
                 # SSD物体検出
                 det_results = ssd_model.predict(img_procs, img_org, conf, overlap)
 
-                # 検出結果描画
+                # 検出範囲描画
                 for img_proc in img_procs:
-                    img_org = img_proc.drawResultDet(img_org, det_results, DrawPen((255,255,255), 1, 0.4))
+                    img_org = img_proc.drawDetArea(img_org, DrawPen((255,255,255), 1, 0.4))
+
+                # 検出結果描画
+                img_org = ImageProc.drawResultDet(img_org, det_results, DrawPen((255,255,255), 1, 0.4))
 
                 time_e = time.perf_counter()
 
                 # FPS等を描画
-                img_org = img_proc.drawResultSummary(img_org, frame_no, num_frame, 
+                img_org = ImageProc.drawResultSummary(img_org, frame_no, num_frame, 
                                                      ssd_model.device_.type, 
                                                      (time_e - time_s),
                                                      DrawPen((255,255,255), 2, 0.6))
@@ -243,14 +246,17 @@ def main_det_img(img_procs:List[ImageProc], ssd_model:SSDModelDetector, img_fpat
         # SSD物体検出
         det_results = ssd_model.predict(img_procs, img_org, conf, overlap)
 
-        # 検出結果描画
+        # 検出範囲描画
         for img_proc in img_procs:
-            img_org = img_proc.drawResultDet(img_org, det_results, DrawPen((255,255,255), 1, 0.4))
+            img_org = img_proc.drawDetArea(img_org, DrawPen((255,255,255), 1, 0.4))
+
+        # 検出結果描画
+        img_org = ImageProc.drawResultDet(img_org, det_results, DrawPen((255,255,255), 1, 0.4))
 
         time_e = time.perf_counter()
 
         # FPS等を描画
-        img_org = img_proc.drawResultSummary(img_org, 0, 0, 
+        img_org = ImageProc.drawResultSummary(img_org, 0, 0, 
                                              ssd_model.device_.type, 
                                              (time_e - time_s),
                                              DrawPen((255,255,255), 2, 0.6))
@@ -315,14 +321,14 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
             det_results = ssd_model.predict([img_proc], img_org, conf)
 
             # 検出結果描画
-            img_org = img_proc.drawResultDet(img_org, det_results, DrawPen((128,255,255), 1, 0.4))
+            img_org = ImageProc.drawResultDet(img_org, det_results, DrawPen((128,255,255), 1, 0.4))
 
             if is_exist_anno == True:
                 # アノテーションデータ取得＆描画
                 img_h, img_w, _ = img_org.shape
 
-                anno_data = img_proc.getAnnoData(val_anno_list[idx], parse_anno, ssd_model.voc_classes_, img_w, img_h)
-                img_org = img_proc.drawAnnoData(img_org, anno_data, DrawPen((128,255,128), 1, 0.4))
+                anno_data = ImageProc.getAnnoData(val_anno_list[idx], parse_anno, ssd_model.voc_classes_, img_w, img_h)
+                img_org = ImageProc.drawAnnoData(img_org, anno_data, DrawPen((128,255,128), 1, 0.4))
 
                 for anno_cur in anno_data:
                     # アノテーションデータの評価結果をログ出力
