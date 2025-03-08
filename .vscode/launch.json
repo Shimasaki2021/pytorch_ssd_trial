@@ -20,6 +20,16 @@
             "args": [
                 "data/od_cars_org_F00000.jpg",
             ]
+        },
+        {
+            "name": "Python デバッガー: app_carnumber",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "app_carnumber_auto_blur.py",
+            "console": "integratedTerminal",
+            "args": [
+                "data/NNF_230816_110451_x1_short_org.mp4",
+            ]
         }
     ]
 }
