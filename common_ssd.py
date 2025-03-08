@@ -99,8 +99,10 @@ class ImageProc:
             area_w = self.darea_w_
             area_h = self.darea_h_
         
+        # 検出範囲の幅、高さを掛ける
         bbox = bbox * [area_w, area_h, area_w, area_h] 
 
+        # 検出範囲の左上座標を加える
         bb_f = np.array([bbox[0] + float(self.darea_lu_x_), 
                          bbox[1] + float(self.darea_lu_y_), 
                          bbox[2] + float(self.darea_lu_x_), 

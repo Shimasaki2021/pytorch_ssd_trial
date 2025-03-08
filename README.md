@@ -46,7 +46,7 @@ https://github.com/hituji1012/od_test
 ```predict_ssd.py
 # 検出範囲
 #   (1280x720を)300x300/350x350に切り出し
-img_procs = [ImageProc(110, 250, 530, 600), 
+img_procs = [ImageProc(180, 250, 530, 600), 
              ImageProc(480, 200, 780, 500), 
              ImageProc(730, 200, 1030, 500), 
              ImageProc(930, 250, 1280, 600)] 
@@ -131,7 +131,7 @@ test_rate  = 0.1
 実行後は、weights/以下に、pthファイルと、学習クラス名が書かれたtxtが出力されます。
 
 ```
-./train_ssd.py [動画(mp4) or 画像ファイルパス] ([epoch数])
+./train_ssd.py ([epoch数])
 ```
 
 学習にかかる時間は、PC環境や学習データ数に大きく依存します。

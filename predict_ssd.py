@@ -10,6 +10,7 @@ from typing import List,Tuple,Any
 from utils.ssd_model import SSD, DataTransform, VOCDataset, Anno_xml2list, nm_suppression
 import numpy as np
 import torch
+import torchvision
 
 from common_ssd import ImageProc, SSDModel, DetResult, AnnoData, DrawPen, Logger, makeVocClassesTxtFpath
 
@@ -48,19 +49,25 @@ class SSDModelDetector(SSDModel):
 
     def predict(self, img_procs:List[ImageProc], img_org:np.ndarray, data_confidence_level:float=0.5, overlap:float=0.45) -> List[DetResult]:
         
-        # 複数範囲の画像バッチ化
+        # 前処理を行うクラス(DataTransform)のインスタンス作成
         transform = DataTransform(self.input_size_, self.color_mean_)
 
         imgs_trans:List[np.ndarray] = []
         for img_proc in img_procs:
             # 検出範囲切り出し
             img_det = img_proc.clip(img_org)
-            # 画像を前処理
+            # 画像前処理
             (img_trans, _ ,_) = transform(img_det, "val", "", "")
+            # batch化（リストに追加（SSDモデルにあうようデータ配置組み替えもあわせて実施））
             imgs_trans.append(img_trans[:, :, (2, 1, 0)]) # [h,w,ch(BGR→RGB)]
         
+        # batch化（リスト→torchテンソル型に変換（SSDモデルにあうようデータ配置組み替えもあわせて実施））
         imgs_trans_np = np.array(imgs_trans)                         # [batch_num, h, w, ch(RGB)]
         img_batch = torch.from_numpy(imgs_trans_np).permute(0,3,1,2) # [batch_num, ch(RGB), h, w]
+        # for idx,img in enumerate(img_batch):
+        #     torchvision.utils.save_image(img, f"img_batch{idx}.jpg")
+
+        # 入力画像をデバイス(GPU or CPU)に送る
         img_batch = img_batch.to(self.device_)
         # print(f"img_batch = {img_batch.shape}")
 
@@ -69,17 +76,18 @@ class SSDModelDetector(SSDModel):
         self.net_.eval()
         outputs = self.net_(img_batch)
 
-        # 結果取得
-        outputs    = outputs.cpu().detach().numpy()
-        find_index = np.where(outputs[:, :, :, 0] >= data_confidence_level) # (batch_num, label, top)
+        # SSDモデルの出力を閾値処理（確信度confが閾値以上の結果を取り出し）
+        outputs    = outputs.cpu().detach().numpy() # (batch_num, label, top200, [conf,xmin,ymin,xmax,ymax])
+        find_index = np.where(outputs[:, :, :, 0] >= data_confidence_level) # (batch_num, label, top200)
         outputs    = outputs[find_index]
 
+        # 抽出した物体数分ループを回す
         det_results:List[DetResult] = []
 
-        for i in range(len(find_index[1])):  # 抽出した物体数分ループを回す
+        for i in range(len(find_index[1])):  
 
-            area_no  = find_index[0][i] # 検出領域index (batch index)
-            label_no = find_index[1][i] # ラベル番号
+            area_no  = find_index[0][i] # 検出範囲index (batch index)
+            label_no = find_index[1][i] # ラベル(クラス)番号
 
             if label_no > 0:  
                 # [背景クラスでない場合] 結果を取得
@@ -88,7 +96,7 @@ class SSDModelDetector(SSDModel):
                 sc = outputs[i][0]
                 # クラス名
                 cls_name = self.voc_classes_[label_no-1]
-                # Bounding Box: 切り出し前の画像上での座標値に変換
+                # Bounding Box: 入力画像上での座標値に変換
                 bb_i = img_procs[area_no].convBBox( outputs[i][1:] )
 
                 det_results.append(DetResult(cls_name, bb_i, sc))
@@ -100,6 +108,9 @@ class SSDModelDetector(SSDModel):
         return det_results
 
     def nmSuppression(self, det_results:List[DetResult], iou:float=0.45) -> List[DetResult]:
+        # 重複枠の削除
+        #   引数iou以上の重なりがある枠が存在する場合、一番確信度が高い枠のみ残し、それ以外を削除する
+        #   異なるクラスの枠同士が重なる場合は対象外
         det_results_sup:List[DetResult] = []
 
         for cls_name in self.voc_classes_:
@@ -376,7 +387,7 @@ if __name__ == "__main__":
 
     # 検出範囲
     #   (1280x720を)300x300/350x350に切り出し
-    img_procs = [ImageProc(110, 250, 530, 600), 
+    img_procs = [ImageProc(180, 250, 530, 600), 
                  ImageProc(480, 200, 780, 500), 
                  ImageProc(730, 200, 1030, 500), 
                  ImageProc(930, 250, 1280, 600)] 

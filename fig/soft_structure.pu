@@ -25,7 +25,14 @@ package utils {
         }
         class VOCDataset
         class DataTransform
+        {
+            {method}画像前処理: 拡大/縮小, 型変換etc
+            {method}画像拡張(Augmentation): 反転、色調変換etc.
+        }
         class Anno_xml2list
+        {
+            {method}xml読み出し、パース
+        }
         class MultiBoxLoss
     }
 }
@@ -54,12 +61,12 @@ SSDModel <|- SSDModelDetector
 SSDModelTrainer - DataLoader : 画像、正解データ取得 >
 ' SSD -- vgg16_reducefdc : load >
 SSDModelTrainer - SSD : 順伝播\n(forward) >
-SSDModelTrainer - MultiBoxLoss : 損失計算,逆伝播\n(backward) >
+SSDModelTrainer - MultiBoxLoss : 損失計算、逆伝播\n(backward) >
 SSDModelTrainer -d- AdamW : パラメータ更新 >
 MultiBoxLoss .. SSD : 勾配算出? >
 AdamW .. SSD : パラメータ更新? >
 
-SSDModelDetector - ImageProc : 検出範囲切り出し, 座標変換 >
+SSDModelDetector - ImageProc : 検出範囲切り出し、座標変換 >
 SSDModelDetector -- DataTransform : 画像前処理 >
 SSDModelDetector - SSD : 順伝播\n(forward) >
 
@@ -68,7 +75,7 @@ VocDataSetMng *-- VOCDataset
 VocDataSetMng *-- DataLoader
 
 DataLoader -- VOCDataset : 画像、正解データ取得 >
-VOCDataset - DataTransform : 画像前処理 >
+VOCDataset - DataTransform : 画像前処理\n拡張(Augmentation) >
 VOCDataset -d- Anno_xml2list : 正解データ取得\n(xml load) > 
 ' Anno_xml2list -- AnnoFile : load >
 ' VOCDataset -- ImageFile : load >
