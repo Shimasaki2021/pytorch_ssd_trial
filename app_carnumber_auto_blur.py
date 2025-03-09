@@ -252,6 +252,7 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
     blur_kernel_size:int      = cfg["blur_kernel_size"]
     is_debug:bool             = cfg["is_debug"]
     is_output_movie:bool      = cfg["is_output_movie"]
+    is_output_image:bool      = cfg["is_output_image"]
     same_cur_iou_th:float     = cfg["same_cur_iou_th"]
     include_car_rate_th:float = cfg["include_car_rate_th"]
 
@@ -298,6 +299,8 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
 
             if not (img_org is None):
                 
+                print(f"processing F{frame_no:05} / F{num_frame:05}...")
+
                 # 今周期（今フレーム）の検出結果をクリア
                 det_numbers_mng.initCycle()
                 
@@ -336,9 +339,11 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
                                                         (time_e - time_s),
                                                         DrawPen((255,255,255), 2, 0.6))
 
-                # 保存
-                frame_img_fpath = output_imgdir_path + "/F{:05}".format(frame_no) + ".jpg" 
-                cv2.imwrite(frame_img_fpath, img_org)
+                # 画像保存
+                if is_output_image == True:
+                    frame_img_fpath = f"{output_imgdir_path}/F{frame_no:05}.jpg" 
+                    #frame_img_fpath = output_imgdir_path + "/F{:05}".format(frame_no) + ".jpg" 
+                    cv2.imwrite(frame_img_fpath, img_org)
 
                 # 動画出力
                 if out_movie is not None:
@@ -406,11 +411,13 @@ if __name__ == "__main__":
         # ぼかし強度(カーネルサイズ)
         "blur_kernel_size" : 10,
 
-        # "is_debug"     : False,
-        "is_debug"     : True,
+        "is_debug"     : False,
+        # "is_debug"     : True,
 
         "is_output_movie" : True,
         # "is_output_movie" : False,
+        "is_output_image" : True,
+        # "is_output_image" : False,
 
         # (トラッキング) 検出時の、累積信頼度の上限1（ここを超えると累積信頼度の上昇がゆるやかになる）
         "ACCUM_CONF_MAX1" : 10.0,
