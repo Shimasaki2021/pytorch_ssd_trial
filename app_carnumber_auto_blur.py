@@ -428,8 +428,8 @@ if __name__ == "__main__":
         "is_blur"      : True,      # ぼかしを入れる
         # "is_blur"      : False,     # (debug) ぼかしを入れない
 
-        # "is_debug"     : False,     # 検出枠表示なし
-        "is_debug"     : True,      # (debug) 検出枠（時系列処理された枠）を表示
+        "is_debug"     : False,     # 検出枠表示なし
+        # "is_debug"     : True,      # (debug) 検出枠（時系列処理された枠）を表示
 
         "is_output_movie" : True,   # 結果を動画出力
         # "is_output_movie" : False,  # (debug) 動画出力しない
