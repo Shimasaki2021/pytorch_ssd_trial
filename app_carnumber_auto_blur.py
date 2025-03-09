@@ -265,6 +265,7 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
     conf:float                = cfg["ssd_model_conf_lower_th"]
     overlap:float             = cfg["ssd_model_iou_th"]
     blur_kernel_size:int      = cfg["blur_kernel_size"]
+    is_blur:bool              = cfg["is_blur"]
     is_debug:bool             = cfg["is_debug"]
     is_output_movie:bool      = cfg["is_output_movie"]
     is_output_image:bool      = cfg["is_output_image"]
@@ -328,22 +329,20 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
                 det_numbers_mng.addCurDetNumber(frame_no, det_results, same_cur_iou_th, include_car_rate_th)
                 det_numbers_mng.updateCycle() # ここで、未検出が続いている物体が削除される
 
+                # 検出結果（ナンバープレート）を取得
+                det_numbers  = det_numbers_mng.getNumberPlates()
+
+                if is_blur == True:
+                    # ナンバープレート検出位置にぼかしを入れる
+                    img_org = ImageProc.blurDetObject(img_org, det_numbers, blur_kernel_size)
 
                 if is_debug == True:
-                    # 検出結果（ナンバープレート＆車）を取得
-                    det_numbers  = det_numbers_mng.getNumberPlates()
+                    # 検出結果（車）を追加取得
                     det_numbers += det_numbers_mng.getCars() 
 
                     # 検出結果描画
                     img_org = ImageProc.drawResultDet(img_org, det_results, DrawPen((255,255,255), 1, 0.4))
                     img_org = ImageProc.drawResultDet(img_org, det_numbers, DrawPen((0,255,0), 1, 0.4))
-
-                else:
-                    # 検出結果（ナンバープレート）を取得
-                    det_numbers  = det_numbers_mng.getNumberPlates()
-
-                    # ナンバープレート検出位置にぼかしを入れる
-                    img_org = ImageProc.blurDetObject(img_org, det_numbers, blur_kernel_size)
 
                 time_e = time.perf_counter()
 
@@ -426,14 +425,17 @@ if __name__ == "__main__":
         # ぼかし強度(カーネルサイズ)
         "blur_kernel_size" : 10,
 
-        "is_debug"     : False,
-        # "is_debug"     : True,
+        "is_blur"      : True,      # ぼかしを入れる
+        # "is_blur"      : False,     # (debug) ぼかしを入れない
 
-        "is_output_movie" : True,
-        # "is_output_movie" : False,
+        # "is_debug"     : False,     # 検出枠表示なし
+        "is_debug"     : True,      # (debug) 検出枠（時系列処理された枠）を表示
 
-        "is_output_image" : True,
-        # "is_output_image" : False,
+        "is_output_movie" : True,   # 結果を動画出力
+        # "is_output_movie" : False,  # (debug) 動画出力しない
+
+        # "is_output_image" : True,   # （debug) 結果を画像（フレーム毎）出力
+        "is_output_image" : False,  # 画像出力しない
 
         # (トラッキング) 検出時の、累積信頼度の上限1（ここを超えると累積信頼度の上昇がゆるやかになる）
         "ACCUM_CONF_MAX1" : 10.0,
