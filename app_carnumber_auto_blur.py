@@ -247,13 +247,17 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
     img_procs:List[ImageProc] = cfg["img_procs"]
     conf:float                = cfg["ssd_model_conf_lower_th"]
     overlap:float             = cfg["ssd_model_iou_th"]
+    blur_kernel_size:int      = cfg["blur_kernel_size"]
     is_debug:bool             = cfg["is_debug"]
     is_output_movie:bool      = cfg["is_output_movie"]
     same_cur_iou_th:float     = cfg["same_cur_iou_th"]
     include_car_rate_th:float = cfg["include_car_rate_th"]
 
     # 画像出力用フォルダ作成
-    output_imgdir_name = os.path.splitext(os.path.basename(movie_fpath))[0] + ".blur"
+    if is_debug == True:
+        output_imgdir_name = os.path.splitext(os.path.basename(movie_fpath))[0] + ".dbg"
+    else:
+        output_imgdir_name = os.path.splitext(os.path.basename(movie_fpath))[0] + ".blur"
     output_imgdir_path = Logger.createOutputDir(ssd_model.device_.type, output_imgdir_name)
 
     # 入力動画読み込み
@@ -319,7 +323,7 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
                     det_numbers  = det_numbers_mng.getNumberPlates()
 
                     # ナンバープレート検出位置にぼかしを入れる
-                    img_org = ImageProc.blurDetObject(img_org, det_numbers)
+                    img_org = ImageProc.blurDetObject(img_org, det_numbers, blur_kernel_size)
 
                 time_e = time.perf_counter()
 
@@ -397,8 +401,11 @@ if __name__ == "__main__":
                           ImageProc(730, 200, 1030, 500), 
                           ImageProc(930, 250, 1280, 600)], 
         
-        "is_debug"     : False,
-        # "is_debug"     : True,
+        # ぼかし強度(カーネルサイズ)
+        "blur_kernel_size" : 10,
+
+        # "is_debug"     : False,
+        "is_debug"     : True,
 
         "is_output_movie" : True,
         # "is_output_movie" : False,

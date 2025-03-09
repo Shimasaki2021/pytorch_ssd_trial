@@ -213,11 +213,11 @@ class ImageProc:
         return
     
     @staticmethod
-    def blurDetObject(img_org:np.ndarray, det_results:List[DetResult]) -> np.ndarray:
+    def blurDetObject(img_org:np.ndarray, det_results:List[DetResult], blur_kernel_size:int) -> np.ndarray:
         # 検出位置にぼかしを入れる
         for det in det_results:
             s_roi = img_org[det.bbox_[1]: det.bbox_[3], det.bbox_[0]: det.bbox_[2]]
-            s_roi = cv2.blur(s_roi, (10, 10)) 
+            s_roi = cv2.blur(s_roi, (blur_kernel_size, blur_kernel_size))
             img_org[det.bbox_[1]: det.bbox_[3], det.bbox_[0]: det.bbox_[2]] = s_roi
 
         return img_org
