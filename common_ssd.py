@@ -211,6 +211,16 @@ class ImageProc:
 
         cv2.putText(img, text, loc, cv2.FONT_HERSHEY_SIMPLEX, scale, col, thick, cv2.LINE_AA)
         return
+    
+    @staticmethod
+    def blurDetObject(img_org:np.ndarray, det_results:List[DetResult]) -> np.ndarray:
+        # 検出位置にぼかしを入れる
+        for det in det_results:
+            s_roi = img_org[det.bbox_[1]: det.bbox_[3], det.bbox_[0]: det.bbox_[2]]
+            s_roi = cv2.blur(s_roi, (10, 10)) 
+            img_org[det.bbox_[1]: det.bbox_[3], det.bbox_[0]: det.bbox_[2]] = s_roi
+
+        return img_org
 
 
 class VocDataSetMng:
