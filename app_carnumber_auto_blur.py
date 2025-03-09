@@ -18,20 +18,20 @@ from predict_ssd import SSDModelDetector
 # 検出されたナンバープレート1つ分
 # （ナンバープレートと、ナンバープレートを包含する車のペアを保持）
 class DetNumberPlate:
-    ACCUM_CONF_MAX1_ = 10.0  # 累積信頼度の上限1（ここを超えると累積信頼度の上昇がゆるやかになる）
-    ACCUM_CONF_MAX2_ = 15.0  # 累積信頼度の上限2（これ以上は累積信頼度を上昇させない）
-    ACCUM_CONF_ADD_RATE1_ = 1.0  # 累積信頼度の上昇率1（信頼度conf * ADD_RATE1 だけ上昇）
-    ACCUM_CONF_ADD_RATE2_ = 0.1  # 累積信頼度の上昇率2（信頼度conf * ADD_RATE2 だけ上昇）
 
-    ACCUM_CONF_DEC_ = -0.5  # 累積信頼度の減算値（1周期分）
-
-    def __init__(self):
+    def __init__(self, cfg:Dict[str,Any]):
         self.id_         = 0
         self.is_valid_   = False
         self.is_det_cur_ = False # 今周期検出済フラグ
         self.obj_number_:DetResult = None
         self.obj_car_:DetResult    = None
         self.accum_conf_ = 0.0   # 累積信頼度（検出した信頼度confを積算）
+
+        self.param_aconf_max1_:float = cfg["ACCUM_CONF_MAX1"]
+        self.param_aconf_max2_:float = cfg["ACCUM_CONF_MAX2"]
+        self.param_aconf_dec_:float  = cfg["ACCUM_CONF_DEC"]
+        self.param_aconf_add_rate1_:float = cfg["ACCUM_CONF_ADD_RATE1"]
+        self.param_aconf_add_rate2_:float = cfg["ACCUM_CONF_ADD_RATE2"]
         return
     
     def isValid(self) -> bool:
@@ -65,16 +65,16 @@ class DetNumberPlate:
         #   累積信頼度が一定値をこえたら、上昇がゆるやかになるようにする（減算時には適用しない）
         conf_add_val = conf_val
         if conf_val > 0.0:
-            if self.accum_conf_ < DetNumberPlate.ACCUM_CONF_MAX1_:
-                conf_add_val = conf_val * DetNumberPlate.ACCUM_CONF_ADD_RATE1_
+            if self.accum_conf_ < self.param_aconf_max1_:
+                conf_add_val = conf_val * self.param_aconf_add_rate1_
             else:
-                conf_add_val = conf_val * DetNumberPlate.ACCUM_CONF_ADD_RATE2_
+                conf_add_val = conf_val * self.param_aconf_add_rate2_
 
         self.accum_conf_ += conf_add_val
 
         # 上限でクリップ
-        if self.accum_conf_ > DetNumberPlate.ACCUM_CONF_MAX2_:
-            self.accum_conf_ = DetNumberPlate.ACCUM_CONF_MAX2_
+        if self.accum_conf_ > self.param_aconf_max2_:
+            self.accum_conf_ = self.param_aconf_max2_
 
         if self.accum_conf_ < 0.0:
             # [下限（＝0）を下回った場合] 無効化
@@ -123,7 +123,9 @@ class DetNumberPlate:
 
 # 検出されたナンバープレートを時系列管理
 class DetNumberPlateMng:
-    def __init__(self):
+
+    def __init__(self, cfg:Dict[str,Any]):
+        self.cfg_    = cfg
         self.new_id_ = 1
         self.det_obj_buf_:List[DetNumberPlate] = [] # 検出された物体（ナンバープレート、車）
         return
@@ -157,7 +159,7 @@ class DetNumberPlateMng:
 
                     else:
                         # [未登録の場合] 新規追加
-                        new_det_obj = DetNumberPlate()
+                        new_det_obj = DetNumberPlate(self.cfg_)
                         new_det_obj.setDetObject(self.new_id_, obj_number, obj_car)
                         self.det_obj_buf_.append(new_det_obj)
                         self.new_id_ = self.new_id_ + 1
@@ -213,7 +215,7 @@ class DetNumberPlateMng:
             else:
                 # [今周期に検出なしの場合] 
                 #  累積信頼度を減算。低くなったら無効化
-                det_obj.updateAccumConf(DetNumberPlate.ACCUM_CONF_DEC_)
+                det_obj.updateAccumConf(det_obj.param_aconf_dec_)
 
                 if det_obj.isValid() == True:
                     #  [無効化されていない場合] 残す
@@ -283,7 +285,7 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
     # 動画再生
     frame_no = 0
 
-    det_numbers_mng = DetNumberPlateMng()
+    det_numbers_mng = DetNumberPlateMng(cfg)
 
     while frame_no < num_frame:
 
@@ -410,7 +412,24 @@ if __name__ == "__main__":
         "is_output_movie" : True,
         # "is_output_movie" : False,
 
-        # トラッキング用閾値（過去の車と現在の車の外接矩形の重なり(iou)閾値）
+        # (トラッキング) 検出時の、累積信頼度の上限1（ここを超えると累積信頼度の上昇がゆるやかになる）
+        "ACCUM_CONF_MAX1" : 10.0,
+
+        # (トラッキング) 検出時の、累積信頼度の上限2（これ以上は累積信頼度を上昇させない）
+        "ACCUM_CONF_MAX2" : 15.0,
+
+        # (トラッキング) 未検出時の、累積信頼度の減算値（1周期分）
+        #   ナンバープレートが画面外になった際、 3(ACCUM_CONF_MAX2 / ACCUM_CONF_DEC) / fps [sec]で物体が消去される
+        #   （30fps、MAX2=15, DEC=-0.5の場合、1[sec]で物体を消去）
+        "ACCUM_CONF_DEC"  : -0.5,
+
+        # (トラッキング) 累積信頼度の上昇率1（信頼度conf * ADD_RATE1 だけ上昇）
+        "ACCUM_CONF_ADD_RATE1" : 1.0,
+
+        # (トラッキング) 累積信頼度の上昇率2（信頼度conf * ADD_RATE2 だけ上昇）
+        "ACCUM_CONF_ADD_RATE2" : 0.2,
+
+        # (トラッキング) 過去の車と現在の車の外接矩形の重なり(iou)閾値
         "same_cur_iou_th" : 0.2,
 
         # ナンバープレートが車に包含されているかどうかの包含率閾値
