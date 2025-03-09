@@ -20,9 +20,10 @@ from predict_ssd import SSDModelDetector
 class DetNumberPlate:
 
     def __init__(self, cfg:Dict[str,Any]):
-        self.id_         = 0
-        self.is_valid_   = False
-        self.is_det_cur_ = False # 今周期検出済フラグ
+        self.id_          = 0
+        self.is_valid_    = False
+        self.is_det_cur_  = False # 今周期検出済フラグ
+        self.det_frame_no = 0     # 検出時のフレーム番号
         self.obj_number_:DetResult = None
         self.obj_car_:DetResult    = None
         self.accum_conf_ = 0.0   # 累積信頼度（検出した信頼度confを積算）
@@ -46,18 +47,32 @@ class DetNumberPlate:
                 ret = True
         return ret
 
-    def updateDetObject(self, obj_number:DetResult, obj_car:DetResult):
+    def updateDetObject(self, frame_no:int, obj_number:DetResult, obj_car:DetResult):
         if (obj_number is not None) and (obj_car is not None):
             self.is_valid_   = True
             self.is_det_cur_ = True
-            self.obj_number_ = copy.deepcopy(obj_number)
-            self.obj_car_    = copy.deepcopy(obj_car)
+
+            if self.det_frame_no == frame_no:
+                # [更新時刻（フレーム番号）が同じ場合] 登録済みナンバープレートより信頼度が高ければ更新
+                if self.obj_number_.score_ < obj_number.score_:
+                    self.obj_number_ = copy.deepcopy(obj_number)
+                    self.obj_car_    = copy.deepcopy(obj_car)
+            else:
+                # [更新時刻（フレーム番号）が異なる場合] 更新
+                self.det_frame_no = frame_no
+                self.obj_number_  = copy.deepcopy(obj_number)
+                self.obj_car_     = copy.deepcopy(obj_car)
+
         return
 
-    def setDetObject(self, id:int, obj_number:DetResult, obj_car:DetResult):
+    def setDetObject(self, frame_no:int, id:int, obj_number:DetResult, obj_car:DetResult):
         if (obj_number is not None) and (obj_car is not None):
             self.id_ = id
-            self.updateDetObject(obj_number, obj_car)
+            self.det_frame_no = frame_no
+            self.is_valid_    = True
+            self.is_det_cur_  = True
+            self.obj_number_  = copy.deepcopy(obj_number)
+            self.obj_car_     = copy.deepcopy(obj_car)
         return
 
     def updateAccumConf(self, conf_val:float):
@@ -137,7 +152,7 @@ class DetNumberPlateMng:
             det_obj.is_det_cur_ = False
         return
 
-    def addCurDetNumber(self, det_results:List[DetResult], same_cur_iou_th=0.5, include_car_rate_th=0.5):
+    def addCurDetNumber(self, frame_no:int, det_results:List[DetResult], same_cur_iou_th=0.5, include_car_rate_th=0.5):
         # 今周期の検出結果を追加
         #   - ナンバープレートと、ナンバープレートを包含する車のペアを追加する
         #      - 既に保持されているナンバープレートと同一の場合は、差し替え
@@ -155,12 +170,12 @@ class DetNumberPlateMng:
                     buf_idx = self.trackingPastCar(obj_car, same_cur_iou_th)
                     if buf_idx >= 0:
                         # [登録されている場合] 差し替え
-                        self.det_obj_buf_[buf_idx].updateDetObject(obj_number, obj_car)
+                        self.det_obj_buf_[buf_idx].updateDetObject(frame_no, obj_number, obj_car)
 
                     else:
                         # [未登録の場合] 新規追加
                         new_det_obj = DetNumberPlate(self.cfg_)
-                        new_det_obj.setDetObject(self.new_id_, obj_number, obj_car)
+                        new_det_obj.setDetObject(frame_no, self.new_id_, obj_number, obj_car)
                         self.det_obj_buf_.append(new_det_obj)
                         self.new_id_ = self.new_id_ + 1
 
@@ -310,7 +325,7 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
                 det_results = ssd_model.predict(img_procs, img_org, conf, overlap)
 
                 # 今周期の検出結果を登録＆更新
-                det_numbers_mng.addCurDetNumber(det_results, same_cur_iou_th, include_car_rate_th)
+                det_numbers_mng.addCurDetNumber(frame_no, det_results, same_cur_iou_th, include_car_rate_th)
                 det_numbers_mng.updateCycle() # ここで、未検出が続いている物体が削除される
 
 
@@ -416,6 +431,7 @@ if __name__ == "__main__":
 
         "is_output_movie" : True,
         # "is_output_movie" : False,
+
         "is_output_image" : True,
         # "is_output_image" : False,
 
