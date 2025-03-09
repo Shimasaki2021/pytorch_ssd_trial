@@ -328,6 +328,7 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
                 # 今周期の検出結果を登録＆更新
                 det_numbers_mng.addCurDetNumber(frame_no, det_results, same_cur_iou_th, include_car_rate_th)
                 det_numbers_mng.updateCycle() # ここで、未検出が続いている物体が削除される
+                # print(f"len(det_buf)= {len(det_numbers_mng.det_obj_buf_)}")
 
                 # 検出結果（ナンバープレート）を取得
                 det_numbers  = det_numbers_mng.getNumberPlates()
