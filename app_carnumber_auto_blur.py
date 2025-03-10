@@ -160,6 +160,7 @@ class DetNumberPlateMng:
 
         for obj_det in det_results:
             if obj_det.class_name_ == "number":
+                # ナンバープレートを包含する車のペアを探索
                 obj_number = obj_det
                 obj_car    = DetNumberPlate.searchIncludedCar(obj_number, det_results, include_car_rate_th)
 
@@ -341,7 +342,11 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
                     # 検出結果（車）を追加取得
                     det_numbers += det_numbers_mng.getCars() 
 
-                    # 検出結果描画
+                    # 検出範囲を描画
+                    for img_proc in img_procs:
+                        img_org = img_proc.drawDetArea(img_org, DrawPen((0,128,0), 1, 0.4))
+
+                    # 検出結果を描画
                     img_org = ImageProc.drawResultDet(img_org, det_results, DrawPen((255,255,255), 1, 0.4))
                     img_org = ImageProc.drawResultDet(img_org, det_numbers, DrawPen((0,255,0), 1, 0.4))
 
@@ -414,15 +419,18 @@ if __name__ == "__main__":
         # 動画再生fps (負値＝入力動画のfpsそのまま)
         "play_fps"     : -1.0,
 
-        # 検出範囲
-        # "img_procs"    : [ImageProc(180, 250, 530, 600), 
-        #                   ImageProc(480, 200, 780, 500), 
-        #                   ImageProc(730, 200, 1030, 500), 
-        #                   ImageProc(930, 250, 1280, 600)],
-        "img_procs"    : [ImageProc(480, 200, 780, 500), 
+        # 検出範囲(1280x720、真ん中or右車線走行シーン、駐車場シーン用)
+        "img_procs"    : [ImageProc(0, 250, 350, 600), 
+                          ImageProc(250, 200, 550, 500), 
+                          ImageProc(480, 200, 780, 500), 
                           ImageProc(730, 200, 1030, 500), 
-                          ImageProc(930, 250, 1280, 600)], 
-        
+                          ImageProc(930, 250, 1280, 600)],
+
+        # 検出範囲(1280x720、左車線走行シーン用)
+        # "img_procs"    : [ImageProc(480, 200, 780, 500), 
+        #                   ImageProc(730, 200, 1030, 500), 
+        #                   ImageProc(930, 250, 1280, 600)], 
+
         # ぼかし強度(カーネルサイズ)
         "blur_kernel_size" : 10,
 
@@ -435,8 +443,8 @@ if __name__ == "__main__":
         "is_output_movie" : True,   # 結果を動画出力
         # "is_output_movie" : False,  # (debug) 動画出力しない
 
-        # "is_output_image" : True,   # （debug) 結果を画像（フレーム毎）出力
-        "is_output_image" : False,  # 画像出力しない
+        "is_output_image" : True,   # （debug) 結果を画像（フレーム毎）出力
+        # "is_output_image" : False,  # 画像出力しない
 
         # (トラッキング) 検出時の、累積信頼度の上限1（ここを超えると累積信頼度の上昇がゆるやかになる）
         "ACCUM_CONF_MAX1" : 10.0,
