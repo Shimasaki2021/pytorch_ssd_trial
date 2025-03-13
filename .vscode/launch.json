@@ -28,7 +28,7 @@
             "program": "app_carnumber_auto_blur.py",
             "console": "integratedTerminal",
             "args": [
-                "data/NNF_230816_110451_x1_short_org.mp4",
+                "data/NNF_220504-151539.mp4",
             ]
         }
     ]

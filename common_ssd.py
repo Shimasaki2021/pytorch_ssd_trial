@@ -18,22 +18,40 @@ from utils.ssd_model import VOCDataset, DataTransform, Anno_xml2list, od_collate
 from utils.data_augumentation import jaccard_numpy
 
 class DetResult:
-    def __init__(self, class_name:str, bbox:np.ndarray, score:float):
+    def __init__(self, class_name:str, bbox:np.ndarray, score:float, is_det_cur=True):
         self.class_name_ = class_name
         self.bbox_       = bbox # [xmin,ymin,xmax,ymax]
         self.score_      = score
+        self.is_det_cur_ = is_det_cur # 今周期検出済フラグ
 
-        self.bbox_area_     = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
-        self.bbox_ave_size_ = math.sqrt(self.bbox_area_)
+        self.bbox_w_:int  = bbox[2] - bbox[0]
+        self.bbox_h_:int  = bbox[3] - bbox[1]
+        self.bbox_area_     = self.bbox_w_ * self.bbox_h_
+        self.bbox_ave_size_ = math.sqrt(float(self.bbox_area_))
         return
+    
+    def getBboxCenter(self) -> np.ndarray:
+        return np.array([(self.bbox_[0] + self.bbox_[2])/2, 
+                         (self.bbox_[1] + self.bbox_[3])/2])
+
+    @staticmethod
+    def calcOverlapAreaBBox(bbox1:np.ndarray, bbox2:np.ndarray) -> float:
+        # 重なり部分の面積を算出（ない場合は0）
+        bbox_overlap_area = 0.0
+        bbox_inter = np.concatenate([np.maximum(bbox1[:2], bbox2[:2]), np.minimum(bbox1[2:], bbox2[2:])])
+
+        if (bbox_inter[0] < bbox_inter[2]) and (bbox_inter[1] < bbox_inter[3]):
+            bbox_overlap_area = float((bbox_inter[2] - bbox_inter[0]) * (bbox_inter[3] - bbox_inter[1]))
+
+        return bbox_overlap_area
 
 class AnnoData:
     def __init__(self, class_name:str, bbox:np.ndarray):
         self.class_name_ = class_name
         self.bbox_       = bbox # [xmin,ymin,xmax,ymax]
 
-        self.bbox_area_     = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
-        self.bbox_ave_size_ = math.sqrt(self.bbox_area_)
+        self.bbox_area_:int  = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
+        self.bbox_ave_size_  = math.sqrt(float(self.bbox_area_))
         return
     
     def extractPositiveDetResult(self, det_results:List[DetResult], jaccard_thres=0.5) -> Tuple[DetResult,float]:
@@ -216,9 +234,14 @@ class ImageProc:
     def blurDetObject(img_org:np.ndarray, det_results:List[DetResult], blur_kernel_size:int) -> np.ndarray:
         # 検出位置にぼかしを入れる
         for det in det_results:
-            s_roi = img_org[det.bbox_[1]: det.bbox_[3], det.bbox_[0]: det.bbox_[2]]
-            s_roi = cv2.blur(s_roi, (blur_kernel_size, blur_kernel_size))
-            img_org[det.bbox_[1]: det.bbox_[3], det.bbox_[0]: det.bbox_[2]] = s_roi
+            if (det.bbox_[2] - det.bbox_[0] > 0) and (det.bbox_[3] - det.bbox_[1] > 0):
+
+                s_roi = img_org[det.bbox_[1]: det.bbox_[3], det.bbox_[0]: det.bbox_[2]]
+                # print(str(det.bbox_[2] - det.bbox_[0]), str(det.bbox_[3] - det.bbox_[1]), s_roi.shape)
+                # print(f"({det.bbox_[0]},{det.bbox_[1]}) - ({det.bbox_[2]},{det.bbox_[3]}) s_roi.shape={s_roi.shape}")
+
+                s_roi = cv2.blur(s_roi, (blur_kernel_size, blur_kernel_size))
+                img_org[det.bbox_[1]: det.bbox_[3], det.bbox_[0]: det.bbox_[2]] = s_roi
 
         return img_org
 
@@ -425,3 +448,113 @@ class Logger:
         if (self.is_out_ == True) and (self.log_fp_ is not None):
             ret = True
         return ret
+
+# 2次元値（例：位置(x,y)）を予測するカルマンフィルタ
+#   参考: https://qiita.com/matsui_685/items/16b81bf0ad9a24c54e52
+class KalmanFilter2D:
+    def __init__(self, fps:float):
+        self.is_input_measurement_ = False # 観測値入力有無
+
+        self.dt_ = 1.0/fps #計測間隔
+
+        self.x_ = np.array([[0.], [0.], [0.], [0.]]) # 初期値と初期変動量(速度等)を代入した「4次元状態」
+        self.u_ = np.array([[0.], [0.], [0.], [0.]]) # 外部要素
+
+        # 共分散行列
+        self.P_ = np.array([[100.,   0.,   0., 0.],
+                            [  0., 100.,   0., 0.],
+                            [  0.,   0., 100., 0.], 
+                            [  0.,   0.,   0., 100.]]) 
+        # self.P_ = np.array([[0., 0.,   0., 0.],
+        #                     [0., 0.,   0., 0.],
+        #                     [0., 0., 100., 0.], 
+        #                     [0., 0.,   0., 100.]]) 
+
+        # 状態遷移行列
+        self.F_ = np.array([[1., 0., self.dt_, 0.],
+                            [0., 1., 0.,       self.dt_],
+                            [0., 0., 1.,       0.],
+                            [0., 0., 0.,       1.]])
+        # 観測行列
+        self.H_ = np.array([[1., 0., 0., 0.], 
+                            [0., 1., 0., 0.]])
+
+        self.R_ = np.array([[0.1, 0.],
+                            [0.,  0.1]]) #ノイズ
+
+        self.I_ = np.identity((len(self.x_)))    # 4次元単位行列
+        return
+
+    def predict(self):
+        # 予測ステップ
+        if self.is_input_measurement_ == True:
+            self.x_ = np.dot(self.F_, self.x_) + self.u_
+            self.P_ = np.dot(np.dot(self.F_, self.P_), self.F_.T)
+        return
+
+    def update(self, measurement:np.ndarray):
+        # 更新ステップ
+        if self.is_input_measurement_ == True:
+
+            Z = np.array([measurement])
+            y = Z.T - np.dot(self.H_, self.x_)
+            S = np.dot(np.dot(self.H_, self.P_), self.H_.T) + self.R_
+            K = np.dot(np.dot(self.P_, self.H_.T), np.linalg.inv(S))
+            self.x_ = self.x_ + np.dot(K, y)
+            self.P_ = np.dot((self.I_ - np.dot(K, self.H_)), self.P_)
+        else:
+            # 観測値入力初回は、初期状態の設定のみ
+            self.x_ = np.array([[measurement[0]], [measurement[1]], [0.], [0.]])
+            self.is_input_measurement_ = True
+
+        return
+
+    def resetPredict(self, measurement:np.ndarray):
+        # 予測値を観測値で上書き　※変動量成分はリセットしない
+        self.x_[0][0] = measurement[0]
+        self.x_[1][0] = measurement[1]
+        return
+    
+    def getEstimatedValue(self) -> np.ndarray:
+        # 予測値を返す（2次元値だけ取り出す）
+        return self.x_.reshape((4,))[:2] 
+
+    def getEstimatedStdev(self) -> np.ndarray:
+        # 予測値の標準偏差を返す
+        return np.array([math.sqrt(self.P_[0][0]), math.sqrt(self.P_[1][1])]) 
+
+# --- 単体テスト用 ここから ---
+import matplotlib.pyplot as plt
+
+def unitTestKalman():
+    # https://qiita.com/matsui_685/items/16b81bf0ad9a24c54e52 の実行例
+    measurements = np.array([[7., 15.], [8., 14.], [9., 13.], [10., 12.], [11., 11.], [12., 10.]]) #位置[x,y]の計測結果
+    initial_xy = np.array([6., 17.]) #初期位置
+
+    fps = 10.0
+    kalman_f = KalmanFilter2D(fps)
+    kalman_f.update(initial_xy)
+
+    x_est = []
+    y_est = []
+
+    for m in measurements:
+        kalman_f.predict()
+        kalman_f.update(m)
+        est = kalman_f.getEstimatedValue()
+        x_est.append(est[0])
+        y_est.append(est[1])
+
+    print(kalman_f.getEstimatedValue())
+
+    x_measure = [m[0] for m in measurements]
+    y_measure = [m[1] for m in measurements]
+    plt.plot(x_measure, y_measure)
+    plt.plot(x_est, y_est)
+    plt.show()
+
+    return
+
+if __name__ == "__main__":
+    # 単体テスト: KalmanFilter2D
+    unitTestKalman()
