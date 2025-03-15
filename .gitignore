@@ -13,3 +13,4 @@ weights/vgg16_reducedfc.pth
 test.pu
 output.cuda*
 output.cpu*
+data/test/
