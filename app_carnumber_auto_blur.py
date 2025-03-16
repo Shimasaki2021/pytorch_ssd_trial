@@ -10,8 +10,11 @@ from typing import List,Dict,Any
 
 import numpy as np
 from tqdm import tqdm
+import tkinter as tk
+from tkinter import filedialog
 
 import torch
+
 
 from utils.data_augumentation import jaccard_numpy
 from common_ssd import ImageProc, MovieLoader, DetResult, DrawPen, Logger, KalmanFilter2D
@@ -427,16 +430,14 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
                 # フレーム毎の処理
                 for batch_frame_no, img_org, det_result in zip(batch_frame_nos, batch_imgs, det_results):
 
-                    # 今周期（今フレーム）の検出結果をクリア
-                    det_numbers_mng.initCycle()
-
                     movie_iter.set_description(f"[{batch_frame_no}/{num_frame}]") # 進捗表示
 
-                    # 今周期の検出結果を登録＆更新
-                    det_numbers_mng.addCurDetNumber(det_result, same_cur_iou_th, own_car_rate_th)
-                    det_numbers_mng.updateCycle() # ここで、未検出が続いている物体が削除される
+                    # 検出結果の時系列フィルタリング
+                    det_numbers_mng.initCycle() # 今周期（今フレーム）の検出結果をクリア
+                    det_numbers_mng.addCurDetNumber(det_result, same_cur_iou_th, own_car_rate_th) # 今周期の検出結果を追加
+                    det_numbers_mng.updateCycle() # 未検出物体削除
 
-                    # 検出結果（ナンバープレート）を取得
+                    # フィルタリング後の検出結果（ナンバープレート）を取得
                     det_numbers  = det_numbers_mng.getNumberPlates()
 
                     # ナンバープレート検出位置にぼかしを入れる
@@ -570,10 +571,14 @@ if __name__ == "__main__":
         "ssd_model_num_batch" : 32,
     }
 
-    if len(args) < 2:
-        print("Usage: ", args[0], " [movie file path] ([play fps])")
-    else:
-        if len(args) >= 3:
-            cfg["play_fps"] = float(args[2])
+    root = tk.Tk()
+    root.withdraw() # メインウィンドウは非表示
 
-        main(args[1], cfg)
+    # ファイルダイアログでmp4ファイル選択
+    file_type = [("mp4ファイル","*.mp4")] 
+    media_fpath = filedialog.askopenfilename(filetypes = file_type) 
+
+    if media_fpath != "":
+        print(f"open file [{media_fpath}]")
+        main(media_fpath, cfg)
+
