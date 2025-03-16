@@ -1,0 +1,69 @@
+@startuml soft_structure_app_blur
+
+hide empty members
+allowmixing
+
+title ソフト構造(クラス図): ナンバープレート自動ぼかしアプリ
+
+' package data {
+'     database "画像" as ImageFile
+'     database "正解データ(xml)" as AnnoFile
+'     database "VGG16学習済みパラメータ" as vgg16_reducefdc
+
+' }
+
+
+package utils {
+    package "ssd_model.py" as ssd_model {
+        class SSD {
+            vgg
+            extras
+            loc
+            conf
+        }
+        class DataTransform
+        {
+            {method}画像前処理: 拡大/縮小, 型変換etc
+            {method}画像拡張(Augmentation): 反転、色調変換etc.
+        }
+
+    }
+}
+
+package "common_ssd.py" as common_ssd {
+    class SSDModel
+    class MovieLoader
+    class ImageProc
+}
+
+
+package "predict_ssd.py" as predict_ssd {
+    class SSDModelDetector {
+        predict() : 検知（推論）実行
+    }
+}
+package "app_carnumber_auto_blur.py" as app_blur {
+    class DetNumberPlateMng {
+        predict() : 検知（推論）実行
+    }
+    class DetNumberPlate
+    component "アプリメイン関数\n(main_blur_movie)" as main_blur_movie
+}
+
+DetNumberPlateMng *-- DetNumberPlate
+
+SSDModel <|-u- SSDModelDetector
+
+main_blur_movie - MovieLoader : 画像（フレーム）データ取得 >
+
+main_blur_movie - SSDModelDetector : 車、ナンバープレート検知 >
+SSDModelDetector -- ImageProc : 検出範囲切り出し、座標変換 >
+SSDModelDetector -- DataTransform : 画像前処理 >
+SSDModelDetector -- SSD : 順伝播\n(forward) >
+
+main_blur_movie - DetNumberPlateMng : 時系列フィルタリング >
+
+
+
+
+@enduml
