@@ -439,10 +439,11 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
                     # 検出結果（ナンバープレート）を取得
                     det_numbers  = det_numbers_mng.getNumberPlates()
 
+                    # ナンバープレート検出位置にぼかしを入れる
                     if is_blur == True:
-                        # ナンバープレート検出位置にぼかしを入れる
                         img_org = ImageProc.blurDetObject(img_org, det_numbers, blur_kernel_size)
 
+                    # Debug表示
                     if is_debug == True:
                         # 検出結果（車）を追加取得
                         det_numbers += det_numbers_mng.getCars() 
@@ -455,12 +456,11 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
                         img_org = ImageProc.drawResultDet(img_org, det_result, DrawPen((255,255,255), 1, 0.4))
                         img_org = ImageProc.drawResultDet(img_org, det_numbers, DrawPen((0,255,0), 1, 0.4))
 
-                    if is_debug == True:
                         # FPS等を描画
-                        img_org = img_procs[0].drawResultSummary(img_org, batch_frame_no, num_frame, 
-                                                            ssd_model.device_.type, 
-                                                            time_per_batch,
-                                                            DrawPen((255,255,255), 2, 0.6))
+                        img_org = ImageProc.drawResultSummary(img_org, batch_frame_no, num_frame, 
+                                                              ssd_model.device_.type, 
+                                                              time_per_batch,
+                                                              DrawPen((255,255,255), 2, 0.6))
 
                     # 画像保存
                     if is_output_image == True:

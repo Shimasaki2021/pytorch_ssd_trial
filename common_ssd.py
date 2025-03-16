@@ -172,7 +172,6 @@ class ImageProc:
         
         str_fps = f"fps={(1.0 / time_proc_sec):.1f} dev:{dev_type}"
 
-        # str_fps = "F{:05}".format(frame_no) + "/{:05}".format(frame_num) + " fps={:.1f}".format(1.0 / time_proc_sec) + " dev:" + dev_type
         ImageProc.drawText(img_org, str_frame + str_fps, (10, 15), pen.char_size_, pen.col_, pen.thick_, True)
         
         return img_org
