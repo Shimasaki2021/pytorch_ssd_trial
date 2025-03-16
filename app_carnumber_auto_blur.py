@@ -9,10 +9,12 @@ import time
 from typing import List,Dict,Any
 
 import numpy as np
+from tqdm import tqdm
+
 import torch
 
 from utils.data_augumentation import jaccard_numpy
-from common_ssd import ImageProc, DetResult, DrawPen, Logger, KalmanFilter2D
+from common_ssd import ImageProc, MovieLoader, DetResult, DrawPen, Logger, KalmanFilter2D
 from predict_ssd import SSDModelDetector
 
 # 検出されたナンバープレート1つ分
@@ -381,6 +383,11 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
     is_output_image:bool      = cfg["is_output_image"]
     same_cur_iou_th:float     = cfg["same_cur_iou_th"]
     own_car_rate_th:float     = cfg["own_car_rate_th"]
+    num_batch:int             = cfg["ssd_model_num_batch"]
+
+    num_batch_frame = int(num_batch / len(img_procs))
+    if num_batch_frame < 1:
+        num_batch_frame = 1
 
     # 画像出力用フォルダ作成
     if is_debug == True:
@@ -390,98 +397,86 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
     output_imgdir_path = Logger.createOutputDir(ssd_model.device_.type, output_imgdir_name)
 
     # 入力動画読み込み
-    cap       = cv2.VideoCapture(movie_fpath)  
-    num_frame = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    cap_fps   = cap.get(cv2.CAP_PROP_FPS)
-    frame_w   = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    frame_h   = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    movie_loader       = MovieLoader(movie_fpath, play_fps, num_batch_frame)
+    num_frame          = movie_loader.getNumFrame()
+    play_fps           = movie_loader.getPlayFps()
+    (frame_w, frame_h) = movie_loader.getFrameSize()
 
-    frame_play_step = int((cap_fps + 0.1) / play_fps)
-    if frame_play_step < 1:
-        frame_play_step = 1
+    det_numbers_mng = DetNumberPlateMng(cfg, frame_w, frame_h, play_fps)
 
-    if play_fps < 0.0:
-        play_fps = cap_fps
-
+    # 出力用動画を作成
     out_movie:cv2.VideoWriter = None
 
     if is_output_movie == True:
         fourcc    = cv2.VideoWriter_fourcc("m","p","4","v")
         out_movie = cv2.VideoWriter(f"{output_imgdir_path}/{output_imgdir_name}.mp4", fourcc, play_fps, (frame_w, frame_h))
 
-    # 動画再生
-    frame_no = 0
+    # 入力動画のフレーム読み込み ＆ 検出実行。結果を出力動画に書き込み
+    with tqdm(movie_loader) as movie_iter:
+        for batch_frame_nos, batch_imgs in movie_iter:
 
-    det_numbers_mng = DetNumberPlateMng(cfg, frame_w, frame_h, play_fps)
+            if len(batch_imgs) > 0:
 
-    while frame_no < num_frame:
-
-        # 画像読み込み
-        frame_no = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
-        img_org:np.ndarray = None
-        (_, img_org) = cap.read()
-
-        if frame_no % frame_play_step == 0:
-
-            if not (img_org is None):
-                
-                print(f"processing F{frame_no:05} / F{num_frame:05}...")
-
-                # 今周期（今フレーム）の検出結果をクリア
-                det_numbers_mng.initCycle()
-                
+                # SSD物体検出（複数フレーム分をまとめて検出）
                 time_s = time.perf_counter()
-
-                # SSD物体検出
-                det_results = ssd_model.predict(img_procs, img_org, conf, overlap)
-
-                # 今周期の検出結果を登録＆更新
-                det_numbers_mng.addCurDetNumber(det_results, same_cur_iou_th, own_car_rate_th)
-                det_numbers_mng.updateCycle() # ここで、未検出が続いている物体が削除される
-
-                # 検出結果（ナンバープレート）を取得
-                det_numbers  = det_numbers_mng.getNumberPlates()
-
-                if is_blur == True:
-                    # ナンバープレート検出位置にぼかしを入れる
-                    img_org = ImageProc.blurDetObject(img_org, det_numbers, blur_kernel_size)
-
-                if is_debug == True:
-                    # 検出結果（車）を追加取得
-                    det_numbers += det_numbers_mng.getCars() 
-
-                    # 検出範囲を描画
-                    for img_proc in img_procs:
-                        img_org = img_proc.drawDetArea(img_org, DrawPen((0,128,0), 1, 0.4))
-
-                    # 検出結果を描画
-                    img_org = ImageProc.drawResultDet(img_org, det_results, DrawPen((255,255,255), 1, 0.4))
-                    img_org = ImageProc.drawResultDet(img_org, det_numbers, DrawPen((0,255,0), 1, 0.4))
-
+                det_results = ssd_model.predict(img_procs, batch_imgs, conf, overlap)
                 time_e = time.perf_counter()
 
-                if is_debug == True:
-                    # FPS等を描画
-                    img_org = img_procs[0].drawResultSummary(img_org, frame_no, num_frame, 
-                                                        ssd_model.device_.type, 
-                                                        (time_e - time_s),
-                                                        DrawPen((255,255,255), 2, 0.6))
+                time_per_batch = (time_e - time_s) / len(batch_imgs)
 
-                # 画像保存
-                if is_output_image == True:
-                    frame_img_fpath = f"{output_imgdir_path}/F{frame_no:05}.jpg" 
-                    cv2.imwrite(frame_img_fpath, img_org)
+                # フレーム毎の処理
+                for batch_frame_no, img_org, det_result in zip(batch_frame_nos, batch_imgs, det_results):
 
-                # 動画出力
-                if out_movie is not None:
-                    out_movie.write(img_org)
-                
-                # 表示
-                cv2.imshow(output_imgdir_name, img_org)
+                    # 今周期（今フレーム）の検出結果をクリア
+                    det_numbers_mng.initCycle()
 
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord("q"):
-                break
+                    movie_iter.set_description(f"[{batch_frame_no}/{num_frame}]") # 進捗表示
+
+                    # 今周期の検出結果を登録＆更新
+                    det_numbers_mng.addCurDetNumber(det_result, same_cur_iou_th, own_car_rate_th)
+                    det_numbers_mng.updateCycle() # ここで、未検出が続いている物体が削除される
+
+                    # 検出結果（ナンバープレート）を取得
+                    det_numbers  = det_numbers_mng.getNumberPlates()
+
+                    if is_blur == True:
+                        # ナンバープレート検出位置にぼかしを入れる
+                        img_org = ImageProc.blurDetObject(img_org, det_numbers, blur_kernel_size)
+
+                    if is_debug == True:
+                        # 検出結果（車）を追加取得
+                        det_numbers += det_numbers_mng.getCars() 
+
+                        # 検出範囲を描画
+                        for img_proc in img_procs:
+                            img_org = img_proc.drawDetArea(img_org, DrawPen((0,128,0), 1, 0.4))
+
+                        # 検出結果を描画
+                        img_org = ImageProc.drawResultDet(img_org, det_result, DrawPen((255,255,255), 1, 0.4))
+                        img_org = ImageProc.drawResultDet(img_org, det_numbers, DrawPen((0,255,0), 1, 0.4))
+
+                    if is_debug == True:
+                        # FPS等を描画
+                        img_org = img_procs[0].drawResultSummary(img_org, batch_frame_no, num_frame, 
+                                                            ssd_model.device_.type, 
+                                                            time_per_batch,
+                                                            DrawPen((255,255,255), 2, 0.6))
+
+                    # 画像保存
+                    if is_output_image == True:
+                        frame_img_fpath = f"{output_imgdir_path}/F{batch_frame_no:05}.jpg" 
+                        cv2.imwrite(frame_img_fpath, img_org)
+
+                    # 動画出力
+                    if out_movie is not None:
+                        out_movie.write(img_org)
+                    
+                    # 表示
+                    cv2.imshow(output_imgdir_name, img_org)
+
+                    key = cv2.waitKey(int(1000.0 / play_fps)) & 0xFF
+                    if key == ord("q"):
+                        break
 
     cv2.destroyAllWindows()
     print("output: ", f"{output_imgdir_path}/{output_imgdir_name}.mp4")
@@ -570,6 +565,9 @@ if __name__ == "__main__":
         # (SSDモデル) 重複枠削除する重なり率(iou)閾値
         # "ssd_model_iou_th" : 0.5,
         "ssd_model_iou_th" : 0.4,
+
+        # (SSDモデル) バッチ処理数（＝検出範囲数 x フレーム数）
+        "ssd_model_num_batch" : 32,
     }
 
     if len(args) < 2:

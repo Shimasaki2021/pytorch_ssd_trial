@@ -34,6 +34,9 @@ class DetResult:
         return np.array([(self.bbox_[0] + self.bbox_[2])/2, 
                          (self.bbox_[1] + self.bbox_[3])/2])
 
+    def __str__(self) -> str:
+        return f"({self.class_name_},{self.bbox_},{self.score_},{self.is_det_cur_})"
+
     @staticmethod
     def calcOverlapAreaBBox(bbox1:np.ndarray, bbox2:np.ndarray) -> float:
         # 重なり部分の面積を算出（ない場合は0）
@@ -244,6 +247,74 @@ class ImageProc:
                 img_org[det.bbox_[1]: det.bbox_[3], det.bbox_[0]: det.bbox_[2]] = s_roi
 
         return img_org
+
+class MovieLoader:
+
+    def __init__(self, movie_fpath:str, play_fps:float, num_batch_frame:int):
+        # 入力動画読み込み
+        self.cap_ = cv2.VideoCapture(movie_fpath)
+
+        self.num_cap_frame_ = int(self.cap_.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        # 再生速度の設定
+        cap_fps = self.cap_.get(cv2.CAP_PROP_FPS)
+        self.play_fps_ = cap_fps
+        if play_fps > 0.0:
+            self.play_fps_ = play_fps
+
+        self.frame_play_step_ = int((cap_fps + 0.1) / self.play_fps_)
+        if self.frame_play_step_ < 1:
+            self.frame_play_step_ = 1
+
+        # バッチ処理するフレーム数
+        self.num_batch_frame_ = num_batch_frame
+
+        # 現在のフレーム番号
+        self.cur_frame_no_ = 0
+        return
+
+    def __iter__(self):
+        return self
+
+    def __next__(self) -> Tuple[List[int], List[np.ndarray]]:
+        ret_batch_frame_nos:List[int]   = []
+        ret_batch_imgs:List[np.ndarray] = []
+
+        # フレーム読み込み
+        self.cur_frame_no_ = int(self.cap_.get(cv2.CAP_PROP_POS_FRAMES)) 
+        while (len(ret_batch_frame_nos) < self.num_batch_frame_) and (self.cur_frame_no_ < self.num_cap_frame_):
+
+            img_org:np.ndarray = None
+            (_, img_org) = self.cap_.read()
+
+            if (img_org is not None) and (self.cur_frame_no_ % self.frame_play_step_ == 0):
+                ret_batch_frame_nos.append(self.cur_frame_no_)
+                ret_batch_imgs.append(copy.deepcopy(img_org))
+
+            self.cur_frame_no_ = int(self.cap_.get(cv2.CAP_PROP_POS_FRAMES))
+
+        # 動画末尾フレームまで再生したらiteration終了
+        if self.cur_frame_no_ >= self.num_cap_frame_:
+            raise StopIteration()
+
+        # 動画フレーム画像、フレーム番号を返す（バッチ処理分のリスト）
+        return (ret_batch_frame_nos, ret_batch_imgs)
+
+    def __len__(self) -> int:
+        num_iter = int(self.num_cap_frame_ // self.num_batch_frame_)
+        return num_iter
+
+    def getNumFrame(self) -> int:
+        return self.num_cap_frame_
+
+    def getFrameSize(self) -> Tuple[int,int]:
+        frame_w = int(self.cap_.get(cv2.CAP_PROP_FRAME_WIDTH))
+        frame_h = int(self.cap_.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        return (frame_w, frame_h)
+
+    def getPlayFps(self) -> float:
+        return self.play_fps_
+
 
 
 class VocDataSetMng:

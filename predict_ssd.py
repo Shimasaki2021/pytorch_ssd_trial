@@ -5,14 +5,16 @@ import cv2
 import os
 import time
 import glob
+import copy
 from typing import List,Tuple,Any
 
 from utils.ssd_model import SSD, DataTransform, VOCDataset, Anno_xml2list, nm_suppression
 import numpy as np
+from tqdm import tqdm
 import torch
 import torchvision
 
-from common_ssd import ImageProc, SSDModel, DetResult, AnnoData, DrawPen, Logger, makeVocClassesTxtFpath
+from common_ssd import ImageProc, MovieLoader, SSDModel, DetResult, AnnoData, DrawPen, Logger, makeVocClassesTxtFpath
 
 # SSDモデル作成＆推論
 class SSDModelDetector(SSDModel):
@@ -47,63 +49,75 @@ class SSDModelDetector(SSDModel):
 
         return (net_weights, voc_classes)
 
-    def predict(self, img_procs:List[ImageProc], img_org:np.ndarray, data_confidence_level:float=0.5, overlap:float=0.45) -> List[DetResult]:
+    def predict(self, img_procs:List[ImageProc], imgs:List[np.ndarray], data_confidence_level:float=0.5, overlap:float=0.45) -> List[List[DetResult]]:
         
-        # 前処理を行うクラス(DataTransform)のインスタンス作成
-        transform = DataTransform(self.input_size_, self.color_mean_)
+        num_img  = len(imgs)
 
-        imgs_trans:List[np.ndarray] = []
-        for img_proc in img_procs:
-            # 検出範囲切り出し
-            img_det = img_proc.clip(img_org)
-            # 画像前処理
-            (img_trans, _ ,_) = transform(img_det, "val", "", "")
-            # batch化（リストに追加（SSDモデルにあうようデータ配置組み替えもあわせて実施））
-            imgs_trans.append(img_trans[:, :, (2, 1, 0)]) # [h,w,ch(BGR→RGB)]
-        
-        # batch化（リスト→torchテンソル型に変換（SSDモデルにあうようデータ配置組み替えもあわせて実施））
-        imgs_trans_np = np.array(imgs_trans)                         # [batch_num, h, w, ch(RGB)]
-        img_batch = torch.from_numpy(imgs_trans_np).permute(0,3,1,2) # [batch_num, ch(RGB), h, w]
-        # for idx,img in enumerate(img_batch):
-        #     torchvision.utils.save_image(img, f"img_batch{idx}.jpg")
+        det_results:List[List[DetResult]] = []
+        for img_no in range(num_img):
+            det_results.append(list())
 
-        # 入力画像をデバイス(GPU or CPU)に送る
-        img_batch = img_batch.to(self.device_)
-        # print(f"img_batch = {img_batch.shape}")
+        if num_img > 0:
+            num_area = len(img_procs)
 
-        # 推論実行
-        torch.backends.cudnn.benchmark = True
-        self.net_.eval()
-        outputs = self.net_(img_batch)
+            # 前処理を行うクラス(DataTransform)のインスタンス作成
+            transform = DataTransform(self.input_size_, self.color_mean_)
 
-        # SSDモデルの出力を閾値処理（確信度confが閾値以上の結果を取り出し）
-        outputs    = outputs.cpu().detach().numpy() # (batch_num, label, top200, [conf,xmin,ymin,xmax,ymax])
-        find_index = np.where(outputs[:, :, :, 0] >= data_confidence_level) # (batch_num, label, top200)
-        outputs    = outputs[find_index]
+            imgs_trans:List[np.ndarray] = []
+            for img_org in imgs:
+                for img_proc in img_procs:
+                    # 検出範囲切り出し
+                    img_det = img_proc.clip(img_org)
+                    # 画像前処理
+                    (img_trans, _ ,_) = transform(img_det, "val", "", "")
+                    # batch化（リストに追加（SSDモデルにあうようデータ配置組み替えもあわせて実施））
+                    imgs_trans.append(img_trans[:, :, (2, 1, 0)]) # [h,w,ch(BGR→RGB)]
+            
+            # batch化（リスト→torchテンソル型に変換（SSDモデルにあうようデータ配置組み替えもあわせて実施））
+            imgs_trans_np = np.array(imgs_trans)                         # [batch_num, h, w, ch(RGB)]
+            img_batch = torch.from_numpy(imgs_trans_np).permute(0,3,1,2) # [batch_num, ch(RGB), h, w]
+            # for idx,img in enumerate(img_batch):
+            #     torchvision.utils.save_image(img, f"img_batch{idx}.jpg")
 
-        # 抽出した物体数分ループを回す
-        det_results:List[DetResult] = []
+            # 入力画像をデバイス(GPU or CPU)に送る
+            img_batch = img_batch.to(self.device_)
+            # print(f"img_batch = {img_batch.shape}")
 
-        for i in range(len(find_index[1])):  
+            # 推論実行
+            torch.backends.cudnn.benchmark = True
+            self.net_.eval()
+            outputs = self.net_(img_batch)
 
-            area_no  = find_index[0][i] # 検出範囲index (batch index)
-            label_no = find_index[1][i] # ラベル(クラス)番号
+            # SSDモデルの出力を閾値処理（確信度confが閾値以上の結果を取り出し）
+            outputs    = outputs.cpu().detach().numpy() # (batch_num, label, top200, [conf,xmin,ymin,xmax,ymax])
+            find_index = np.where(outputs[:, :, :, 0] >= data_confidence_level) # (batch_num, label, top200)
+            outputs    = outputs[find_index]
 
-            if label_no > 0:  
-                # [背景クラスでない場合] 結果を取得
+            # 抽出した物体数分ループを回す
+            for i in range(len(find_index[1])):  
 
-                # 確信度conf
-                sc = outputs[i][0]
-                # クラス名
-                cls_name = self.voc_classes_[label_no-1]
-                # Bounding Box: 入力画像上での座標値に変換
-                bb_i = img_procs[area_no].convBBox( outputs[i][1:] )
+                batch_no:int  = find_index[0][i]    # batch index
+                img_no        = batch_no // num_area # 画像no
+                area_no       = batch_no %  num_area # 検出範囲no
 
-                det_results.append(DetResult(cls_name, bb_i, sc))
+                label_no = find_index[1][i] # ラベル(クラス)番号
 
-        if len(img_procs) > 1:
-            # [検出領域が複数の場合] 重複領域での重複枠を取り除く
-            det_results = self.nmSuppression(det_results, overlap)
+                if label_no > 0:  
+                    # [背景クラスでない場合] 結果を取得
+
+                    # 確信度conf
+                    sc = outputs[i][0]
+                    # クラス名
+                    cls_name = self.voc_classes_[label_no-1]
+                    # Bounding Box: 入力画像上での座標値に変換
+                    bb_i = img_procs[area_no].convBBox( outputs[i][1:] )
+
+                    det_results[img_no].append(DetResult(cls_name, bb_i, sc))
+
+            if num_area > 1:
+                for img_no in range(num_img):
+                    # [検出領域が複数の場合] 重複領域での重複枠を取り除く
+                    det_results[img_no] = self.nmSuppression(det_results[img_no], overlap)
 
         return det_results
 
@@ -166,65 +180,61 @@ class LogEvalAnno(Logger):
 
         return
 
-def main_play_movie(img_procs:List[ImageProc], ssd_model:SSDModelDetector, movie_fpath:str, play_fps:float, conf:float, overlap:float):
+def main_play_movie(img_procs:List[ImageProc], num_batch:int, ssd_model:SSDModelDetector, movie_fpath:str, play_fps:float, conf:float, overlap:float):
+
+    num_batch_frame = int(num_batch / len(img_procs))
+    if num_batch_frame < 1:
+        num_batch_frame = 1
 
     # 画像出力用フォルダ作成
     output_imgdir_name = os.path.splitext(os.path.basename(movie_fpath))[0]
     output_imgdir_path = Logger.createOutputDir(ssd_model.device_.type, output_imgdir_name)
 
     # 入力動画読み込み
-    cap       = cv2.VideoCapture(movie_fpath)  
-    num_frame = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    cap_fps   = cap.get(cv2.CAP_PROP_FPS)
+    movie_loader = MovieLoader(movie_fpath, play_fps, num_batch_frame)
+    num_frame    = movie_loader.getNumFrame()
+    play_fps     = movie_loader.getPlayFps()
 
-    frame_play_step = int((cap_fps + 0.1) / play_fps)
-    if frame_play_step < 1:
-        frame_play_step = 1
+    # フレーム読み込み ＆ 検出実行
+    with tqdm(movie_loader) as movie_iter:
+        for batch_frame_nos, batch_imgs in movie_iter:
 
-    # 動画再生
-    frame_no = 0
+            if len(batch_imgs) > 0:
 
-    while frame_no < num_frame:
-
-        # 画像読み込み
-        frame_no = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
-        img_org:np.ndarray = None
-        (_, img_org) = cap.read()
-
-        if frame_no % frame_play_step == 0:
-
-            if not (img_org is None):
-                
+                # SSD物体検出（複数フレーム分をまとめて検出）
                 time_s = time.perf_counter()
-
-                # SSD物体検出
-                det_results = ssd_model.predict(img_procs, img_org, conf, overlap)
-
-                # 検出範囲描画
-                for img_proc in img_procs:
-                    img_org = img_proc.drawDetArea(img_org, DrawPen((255,255,255), 1, 0.4))
-
-                # 検出結果描画
-                img_org = ImageProc.drawResultDet(img_org, det_results, DrawPen((255,255,255), 1, 0.4))
-
+                det_results = ssd_model.predict(img_procs, batch_imgs, conf, overlap)
                 time_e = time.perf_counter()
 
-                # FPS等を描画
-                img_org = ImageProc.drawResultSummary(img_org, frame_no, num_frame, 
-                                                     ssd_model.device_.type, 
-                                                     (time_e - time_s),
-                                                     DrawPen((255,255,255), 2, 0.6))
+                time_per_batch = (time_e - time_s) / len(batch_imgs)
 
-                # 保存
-                frame_img_fpath = output_imgdir_path + "/F{:05}".format(frame_no) + ".jpg" 
-                cv2.imwrite(frame_img_fpath, img_org)
-                
-                # 表示
-                cv2.imshow(output_imgdir_name, img_org)
+                # フレーム毎の処理
+                for batch_frame_no, img_org, det_result in zip(batch_frame_nos, batch_imgs, det_results):
+                    movie_iter.set_description(f"[{batch_frame_no}/{num_frame}]") # 進捗表示
 
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord("q"):
-                break
+                    # 検出範囲描画
+                    for img_proc in img_procs:
+                        img_org = img_proc.drawDetArea(img_org, DrawPen((255,255,255), 1, 0.4))
+
+                    # 検出結果描画
+                    img_org = ImageProc.drawResultDet(img_org, det_result, DrawPen((255,255,255), 1, 0.4))
+
+                    # FPS等を描画
+                    img_org = ImageProc.drawResultSummary(img_org, batch_frame_no, num_frame, 
+                                                        ssd_model.device_.type, 
+                                                        time_per_batch,
+                                                        DrawPen((255,255,255), 2, 0.6))
+
+                    # 保存
+                    frame_img_fpath = f"{output_imgdir_path}/F{batch_frame_no:05}.jpg" 
+                    cv2.imwrite(frame_img_fpath, img_org)
+                    
+                    # 表示
+                    cv2.imshow(output_imgdir_name, img_org)
+
+                    key = cv2.waitKey(int(1000.0 / play_fps)) & 0xFF
+                    if key == ord("q"):
+                        break
 
     cv2.destroyAllWindows()
     print("output: ", output_imgdir_path)
@@ -239,19 +249,19 @@ def main_det_img(img_procs:List[ImageProc], ssd_model:SSDModelDetector, img_fpat
     # 入力画像読み込み
     img_org:np.ndarray = cv2.imread(img_fpath) 
 
-    if not (img_org is None):
+    if img_org is not None:
         
         time_s = time.perf_counter()
 
         # SSD物体検出
-        det_results = ssd_model.predict(img_procs, img_org, conf, overlap)
+        det_results = ssd_model.predict(img_procs, [img_org], conf, overlap)
 
         # 検出範囲描画
         for img_proc in img_procs:
             img_org = img_proc.drawDetArea(img_org, DrawPen((255,255,255), 1, 0.4))
 
         # 検出結果描画
-        img_org = ImageProc.drawResultDet(img_org, det_results, DrawPen((255,255,255), 1, 0.4))
+        img_org = ImageProc.drawResultDet(img_org, det_results[0], DrawPen((255,255,255), 1, 0.4))
 
         time_e = time.perf_counter()
 
@@ -318,10 +328,10 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
             print(f"[{idx}/{num_img}] proc: {img_fpath}...", )
 
             # SSD物体検出
-            det_results = ssd_model.predict([img_proc], img_org, conf)
+            det_results = ssd_model.predict([img_proc], [img_org], conf)
 
             # 検出結果描画
-            img_org = ImageProc.drawResultDet(img_org, det_results, DrawPen((128,255,255), 1, 0.4))
+            img_org = ImageProc.drawResultDet(img_org, det_results[0], DrawPen((128,255,255), 1, 0.4))
 
             if is_exist_anno == True:
                 # アノテーションデータ取得＆描画
@@ -332,7 +342,7 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
 
                 for anno_cur in anno_data:
                     # アノテーションデータの評価結果をログ出力
-                    (pos_det, jaccard_val) = anno_cur.extractPositiveDetResult(det_results)
+                    (pos_det, jaccard_val) = anno_cur.extractPositiveDetResult(det_results[0])
                     log_eval_anno.writeLog(img_fpath, anno_cur, pos_det, jaccard_val)
 
             # 保存
@@ -355,7 +365,7 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
     return
 
 
-def main(media_fpath:str, play_fps:float, weight_fpath:str, img_procs:List[ImageProc], conf:float, overlap:float):
+def main(media_fpath:str, play_fps:float, weight_fpath:str, img_procs:List[ImageProc], num_batch:int, conf:float, overlap:float):
 
     if (os.path.isfile(media_fpath) == False) and (os.path.isdir(media_fpath) == False):
         print("Error: ", media_fpath, " is nothing.")
@@ -371,7 +381,7 @@ def main(media_fpath:str, play_fps:float, weight_fpath:str, img_procs:List[Image
         media_fname:str = os.path.basename(media_fpath)
         if ".mp4" in media_fname:
             # 動画再生
-            main_play_movie(img_procs,ssd_model, media_fpath, play_fps, conf, overlap)
+            main_play_movie(img_procs, num_batch, ssd_model, media_fpath, play_fps, conf, overlap)
 
         elif (".jpg" in media_fname) or (".png" in media_fname):
             # 画像
@@ -401,9 +411,11 @@ if __name__ == "__main__":
     # 入力画像全域を検出範囲にする場合は以下を有効化
     # img_procs = [ImageProc()] 
 
-    conf     = 0.5
-    overlap  = 0.2
-    play_fps = -1.0
+    num_batch = 32
+    # num_batch = 1
+    conf      = 0.5
+    overlap   = 0.2
+    play_fps  = -1.0
 
     if len(args) < 2:
         print("Usage: ", args[0], " [movie/img file path] ([play fps])")
@@ -411,4 +423,4 @@ if __name__ == "__main__":
         if len(args) >= 3:
             play_fps = float(args[2])
 
-        main(args[1], play_fps, weight_fpath, img_procs, conf, overlap)
+        main(args[1], play_fps, weight_fpath, img_procs, num_batch, conf, overlap)
