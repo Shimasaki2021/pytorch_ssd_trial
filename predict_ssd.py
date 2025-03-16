@@ -31,6 +31,11 @@ class SSDModelDetector(SSDModel):
 
         # ネットワークをDeviceへ
         self.net_.to(self.device_)
+
+        # (torch.compile) Windows+anaconda環境では使用不可。WSL2+Ubuntu環境では使用可。
+        #   GPU=GTX1660SUPERでは、以下Warningが出るが一応実行は可能。効果はわずか（1分の動画の処理時間が、12分7秒 → 11分57秒）
+        #     W0316 07:20:49.853000 15169 torch/_inductor/utils.py:1137] [0/0_1] Not enough SMs to use max_autotune_gemm mode
+        # self.net_ = torch.compile(self.net_, mode="default")
         return
     
     def loadWeight(self, weight_fpath:str, device:torch.device) -> Tuple[Any, List[str]]:
