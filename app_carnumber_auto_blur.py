@@ -433,7 +433,7 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
                     movie_iter.set_description(f"[{batch_frame_no}/{num_frame}]") # 進捗表示
 
                     # 検出結果の時系列フィルタリング
-                    det_numbers_mng.initCycle() # 今周期（今フレーム）の検出結果をクリア
+                    det_numbers_mng.initCycle() # 今周期検出済みフラグをクリア
                     det_numbers_mng.addCurDetNumber(det_result, same_cur_iou_th, own_car_rate_th) # 今周期の検出結果を追加
                     det_numbers_mng.updateCycle() # 未検出物体削除
 
