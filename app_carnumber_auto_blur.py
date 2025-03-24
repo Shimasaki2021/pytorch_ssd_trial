@@ -437,7 +437,7 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
                     # 検出結果の時系列フィルタリング
                     det_numbers_mng.initCycle() # 今周期検出済みフラグをクリア
                     det_numbers_mng.addCurDetNumber(det_result, same_cur_iou_th, own_car_rate_th) # 今周期の検出結果を追加
-                    det_numbers_mng.updateCycle() # 未検出物体削除
+                    det_numbers_mng.updateCycle() # 未検出が続く物体を削除、位置補正（カルマンフィルタ）
 
                     # フィルタリング後の検出結果（ナンバープレート）を取得
                     det_numbers  = det_numbers_mng.getNumberPlates()
