@@ -408,10 +408,17 @@ if __name__ == "__main__":
 
     # 検出範囲
     #   (1280x720を)300x300/350x350に切り出し
-    img_procs = [ImageProc(180, 250, 530, 600), 
+    # img_procs = [ImageProc(180, 250, 530, 600), 
+    #              ImageProc(480, 200, 780, 500), 
+    #              ImageProc(730, 200, 1030, 500), 
+    #              ImageProc(930, 250, 1280, 600)] 
+
+    # 検出範囲(1280x720、真ん中or右車線走行シーン、駐車場シーン用)
+    img_procs = [ImageProc(0, 250, 350, 600), 
+                 ImageProc(250, 200, 550, 500), 
                  ImageProc(480, 200, 780, 500), 
                  ImageProc(730, 200, 1030, 500), 
-                 ImageProc(930, 250, 1280, 600)] 
+                 ImageProc(930, 250, 1280, 600)]
 
     # 入力画像全域を検出範囲にする場合は以下を有効化
     # img_procs = [ImageProc()] 

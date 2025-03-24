@@ -407,6 +407,8 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
 
     det_numbers_mng = DetNumberPlateMng(cfg, frame_w, frame_h, play_fps)
 
+    print(f"play_fps = {play_fps}")
+
     # 出力用動画を作成
     out_movie:cv2.VideoWriter = None
 
