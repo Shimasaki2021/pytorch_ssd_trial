@@ -28,9 +28,13 @@ class SSDModelDetector(SSDModel):
         # SSDネットワークモデル
         self.net_ = SSD(phase="inference", cfg=self.ssd_cfg_)
         self.net_.load_state_dict(net_weights)
+        self.net_.eval()
 
         # ネットワークをDeviceへ
         self.net_.to(self.device_)
+
+        # 前処理を行うクラス(DataTransform)のインスタンス作成
+        self.transform_ = DataTransform(self.input_size_, self.color_mean_)
 
         # (torch.compile) Windows+anaconda環境では使用不可。WSL2+Ubuntu環境では使用可。
         #   GPU=GTX1660SUPERでは、以下Warningが出るが一応実行は可能。効果はわずか（1分の動画の処理時間が、12分7秒 → 11分57秒）
@@ -54,6 +58,10 @@ class SSDModelDetector(SSDModel):
 
         return (net_weights, voc_classes)
 
+    def transImage(self, img:np.ndarray) -> np.ndarray:
+        (img_trans, _ ,_) = self.transform_(img, "val", "", "")
+        return img_trans
+    
     def predict(self, img_procs:List[ImageProc], imgs:List[np.ndarray], data_confidence_level:float=0.5, overlap:float=0.45) -> List[List[DetResult]]:
         
         num_img  = len(imgs)
@@ -65,8 +73,6 @@ class SSDModelDetector(SSDModel):
         if num_img > 0:
             num_area = len(img_procs)
 
-            # 前処理を行うクラス(DataTransform)のインスタンス作成
-            transform = DataTransform(self.input_size_, self.color_mean_)
 
             imgs_trans:List[np.ndarray] = []
             for img_org in imgs:
@@ -74,7 +80,7 @@ class SSDModelDetector(SSDModel):
                     # 検出範囲切り出し
                     img_det = img_proc.clip(img_org)
                     # 画像前処理
-                    (img_trans, _ ,_) = transform(img_det, "val", "", "")
+                    img_trans = self.transImage(img_det)
                     # batch化（リストに追加（SSDモデルにあうようデータ配置組み替えもあわせて実施））
                     imgs_trans.append(img_trans[:, :, (2, 1, 0)]) # [h,w,ch(BGR→RGB)]
             
@@ -90,7 +96,6 @@ class SSDModelDetector(SSDModel):
 
             # 推論実行
             torch.backends.cudnn.benchmark = True
-            self.net_.eval()
             outputs = self.net_(img_batch)
 
             # SSDモデルの出力を閾値処理（確信度confが閾値以上の結果を取り出し）
