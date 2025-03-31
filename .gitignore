@@ -10,6 +10,9 @@ test.ipynb
 test2.ipynb
 data/od_dbg/
 weights/vgg16_reducedfc.pth
+weights/mb2-imagenet-71_8.pth
+weights/mb2-ssd-lite-mp-0_686.pth
+weights/mobilenet-v1-ssd-mp-0_675.pth
 test.pu
 output.cuda*
 output.cpu*

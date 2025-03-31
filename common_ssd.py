@@ -519,26 +519,27 @@ class Logger:
             ret = True
         return ret
 
-# 2次元値（例：位置(x,y)）を予測するカルマンフィルタ
+# 2次元値（例：位置(x,y)）を推定するカルマンフィルタ
 #   参考: https://qiita.com/matsui_685/items/16b81bf0ad9a24c54e52
 class KalmanFilter2D:
     def __init__(self, fps:float):
-        self.is_input_measurement_ = False # 観測値入力有無
+        # 観測値入力有無（一度でも観測値を入力したらTrue）
+        self.is_input_measurement_ = False 
 
-        self.dt_ = 1.0/fps #計測間隔
+        # 計測間隔 [sec/cycle]
+        self.dt_ = 1.0 / fps 
 
-        self.x_ = np.array([[0.], [0.], [0.], [0.]]) # 初期値と初期変動量(速度等)を代入した「4次元状態」
-        self.u_ = np.array([[0.], [0.], [0.], [0.]]) # 外部要素
+        # 推定値: 4次元ベクトル(x, y, dx/dt, dy/dt)
+        self.x_ = np.array([[0.], [0.], [0.], [0.]]) 
+
+        # プロセスノイズ
+        self.u_ = np.array([[0.], [0.], [0.], [0.]]) 
 
         # 共分散行列
         self.P_ = np.array([[100.,   0.,   0., 0.],
                             [  0., 100.,   0., 0.],
                             [  0.,   0., 100., 0.], 
                             [  0.,   0.,   0., 100.]]) 
-        # self.P_ = np.array([[0., 0.,   0., 0.],
-        #                     [0., 0.,   0., 0.],
-        #                     [0., 0., 100., 0.], 
-        #                     [0., 0.,   0., 100.]]) 
 
         # 状態遷移行列
         self.F_ = np.array([[1., 0., self.dt_, 0.],
@@ -549,10 +550,12 @@ class KalmanFilter2D:
         self.H_ = np.array([[1., 0., 0., 0.], 
                             [0., 1., 0., 0.]])
 
+        # 観測ノイズ
         self.R_ = np.array([[0.1, 0.],
-                            [0.,  0.1]]) #ノイズ
+                            [0.,  0.1]]) 
 
-        self.I_ = np.identity((len(self.x_)))    # 4次元単位行列
+        # 4次元単位行列
+        self.I_ = np.identity((len(self.x_)))
         return
 
     def predict(self):
@@ -580,17 +583,17 @@ class KalmanFilter2D:
         return
 
     def resetPredict(self, measurement:np.ndarray):
-        # 予測値を観測値で上書き　※変動量成分はリセットしない
+        # 推定値(x,y)を観測値で上書き　※変動量成分(dx/dt, dy/dt)はリセットしない
         self.x_[0][0] = measurement[0]
         self.x_[1][0] = measurement[1]
         return
     
     def getEstimatedValue(self) -> np.ndarray:
-        # 予測値を返す（2次元値だけ取り出す）
+        # 推定値(x,y)を返す（変動量成分(dx/dt, dy/dt)は返さない）
         return self.x_.reshape((4,))[:2] 
 
     def getEstimatedStdev(self) -> np.ndarray:
-        # 予測値の標準偏差を返す
+        # 推定値(x,y)の標準偏差を返す
         return np.array([math.sqrt(self.P_[0][0]), math.sqrt(self.P_[1][1])]) 
 
 # --- 単体テスト用 ここから ---

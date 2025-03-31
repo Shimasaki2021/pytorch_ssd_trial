@@ -98,7 +98,7 @@ class DetNumberPlate:
         return
 
     def updateAccumConf(self, conf_val:float):
-        # 値更新
+        # 累積信頼度の更新
         self.accum_conf_ += conf_val
 
         # 上限でクリップ
@@ -112,18 +112,18 @@ class DetNumberPlate:
         return
 
     def updatePos(self):
-        # ナンバープレート外接矩形の中心座標の推定実行
+        # 位置更新（ナンバープレート外接矩形の中心座標の推定実行）
         if self.isValid() == True:
 
-            self.pos_estimator_.predict() # 予測
+            self.pos_estimator_.predict() # 予測ステップ
 
             if self.obj_number_.is_det_cur_ == True:
-                # [ナンバープレート検出時] 
+                # [ナンバープレート検出時（観測値が得られた場合）] 
                 measure = self.obj_number_.getBboxCenter().astype(float)
-                self.pos_estimator_.update(measure) # 更新
+                self.pos_estimator_.update(measure) # 更新ステップ
 
                 # 一般的ではないが、今回の場合、未検出のときだけカルマンFで外挿をかけたいので、
-                # 観測値が得られた場合は予測を観測値でリセット（位置成分のみ）
+                # 観測値が得られた場合は推定値を観測値でリセット（位置成分のみ）
                 self.pos_estimator_.resetPredict(measure)
         return
 
@@ -132,10 +132,15 @@ class DetNumberPlate:
         ret_bbox = np.zeros((4,)).astype(int)
 
         if self.isValid() == True:
+            # カルマンフィルタ推定値（外接矩形の中点位置）を取得
             est_pt_center = self.pos_estimator_.getEstimatedValue()
-            est_3sigma    = np.ceil(self.pos_estimator_.getEstimatedStdev() * np.array([3.0, 3.0])) # 3σ（小数切り上げ）
 
-            # 中点のばらつき（3σ）分だけ、外接矩形の幅／高さを増やす（極端に大きくならないようクリップ）
+            # 推定値（中点位置）のばらつきを取得
+            #   3σ（小数切り上げ）
+            est_3sigma    = np.ceil(self.pos_estimator_.getEstimatedStdev() * np.array([3.0, 3.0])) 
+
+            # 推定値（中点位置）のばらつき（3σ）分だけ、外接矩形の幅／高さを増やす
+            # （極端に大きくならないよう（増加量が元の幅／高さ以上にならないよう）クリップ）
             bbox_w_inc = int(est_3sigma[0] * 2.0) # 2.0：左右
             bbox_h_inc = int(est_3sigma[1] * 2.0) # 2.0：上下
             if bbox_w_inc > self.obj_number_.bbox_w_:
@@ -173,13 +178,12 @@ class DetNumberPlate:
     
     @staticmethod
     def searchOwnerCar(obj_number:DetResult, det_objs:List[DetResult], own_car_rate_th:float) -> DetResult:
-        # ナンバープレート（obj_number）を所有する車の検出結果を探す
-        #    「重なり矩形面積／ナンバープレートの面積」が閾値以上の場合に、「所有する」と判定
+        # ナンバープレート（obj_number）を所有（包含）する車の検出結果を探す
+        #    「重なり矩形面積／ナンバープレートの面積」が閾値以上の場合に、「所有する（包含する）」と判定
         # 複数見つかった場合は、信頼度が一番大きな車を返す
         obj_car:DetResult = None
         
-        bbox_n = obj_number.bbox_
-        bbox_n_area = float(obj_number.bbox_area_) # float((bbox_n[2] - bbox_n[0]) * (bbox_n[3] - bbox_n[1]))
+        bbox_n_area = float(obj_number.bbox_area_)
 
         if bbox_n_area > 0.0:
 
@@ -187,11 +191,11 @@ class DetNumberPlate:
 
                 if det_obj.class_name_ == "car":
 
-                    # 重なり部分の面積 / ナンバープレートの面積　を算出
+                    # 重なりを算出
                     own_rate = DetResult.calcOverlapAreaBBox(obj_number.bbox_, det_obj.bbox_) / bbox_n_area
 
                     if own_rate > own_car_rate_th:
-                        # [det_objがナンバープレート(obj_number)を所有する、と判定された場合]
+                        # [車（det_obj）がナンバープレート(obj_number)を所有（包含）する、と判定された場合]
 
                         if obj_car is not None:
                             # [既に１つ以上車が見つかっている場合] 信頼度が大きい車を選択
@@ -307,8 +311,6 @@ class DetNumberPlateMng:
 
     def updateCycle(self):
         # 個々の物体（ナンバープレート＆車）の時系列管理
-
-        # 登録物体の消去（検出が続く物体のみを残す、未検出物体もすぐには消さない）
         #   - 今周期にナンバープレート検出ありの場合は、累積信頼度を加算
         #   - 今周期にナンバープレート検出なしの場合は、累積信頼度を減算
         #   - 累積信頼度が高いものを残す（低くなった物体（検出されなくなったもの）を削除）
@@ -347,6 +349,7 @@ class DetNumberPlateMng:
         return
 
     def getNumberPlates(self) -> List[DetResult]:
+        # 登録されているナンバープレートを返す
         ret_objs:List[DetResult] = []
 
         for det_obj in self.det_obj_buf_:
@@ -367,7 +370,7 @@ class DetNumberPlateMng:
         return ret_objs
 
     def getCars(self) -> List[DetResult]:
-        # 登録物体をそのまま返す
+        # 登録されている車を返す
         ret_objs = [det_obj.obj_car_ 
                     for det_obj in self.det_obj_buf_ 
                     if det_obj.isValid() == True]
@@ -416,7 +419,8 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
         fourcc    = cv2.VideoWriter_fourcc("m","p","4","v")
         out_movie = cv2.VideoWriter(f"{output_imgdir_path}/{output_imgdir_name}.mp4", fourcc, play_fps, (frame_w, frame_h))
 
-    # 入力動画のフレーム読み込み ＆ 検出実行。結果を出力動画に書き込み
+    # 入力動画のフレーム読み込み ＆ 検出実行
+    # 結果を出力動画に書き込み
     with tqdm(movie_loader) as movie_iter:
         for batch_frame_nos, batch_imgs in movie_iter:
 
@@ -434,13 +438,21 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
 
                     movie_iter.set_description(f"[{batch_frame_no}/{num_frame}]") # 進捗表示
 
+                    # 今周期検出済みフラグをクリア
+                    det_numbers_mng.initCycle() 
+
+                    # 今周期の検出結果を追加
+                    #   車に包含されたナンバープレートのみ有効化
+                    #   過去物体（ナンバープレート）との紐づけ（トラッキング）
+                    det_numbers_mng.addCurDetNumber(det_result, same_cur_iou_th, own_car_rate_th) 
+
                     # 検出結果の時系列フィルタリング
-                    det_numbers_mng.initCycle() # 今周期検出済みフラグをクリア
-                    det_numbers_mng.addCurDetNumber(det_result, same_cur_iou_th, own_car_rate_th) # 今周期の検出結果を追加
-                    det_numbers_mng.updateCycle() # 未検出が続く物体を削除、位置補正（カルマンフィルタ）
+                    #   物体管理（検出状態を保持する期間を累積信頼度で管理）
+                    #   未検出時の位置推定（カルマンフィルタ適用）
+                    det_numbers_mng.updateCycle() 
 
                     # フィルタリング後の検出結果（ナンバープレート）を取得
-                    det_numbers  = det_numbers_mng.getNumberPlates()
+                    det_numbers = det_numbers_mng.getNumberPlates()
 
                     # ナンバープレート検出位置にぼかしを入れる
                     if is_blur == True:
@@ -456,7 +468,7 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
                             img_org = img_proc.drawDetArea(img_org, DrawPen((0,128,0), 1, 0.4))
 
                         # 検出結果を描画
-                        img_org = ImageProc.drawResultDet(img_org, det_result, DrawPen((255,255,255), 1, 0.4))
+                        img_org = ImageProc.drawResultDet(img_org, det_result,  DrawPen((255,255,255), 1, 0.4))
                         img_org = ImageProc.drawResultDet(img_org, det_numbers, DrawPen((0,255,0), 1, 0.4))
 
                         # FPS等を描画
