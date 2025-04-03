@@ -685,6 +685,12 @@ class Detect(Function):
         self.top_k = 200  # nm_supressionでconfの高いtop_k個を計算に使用する, top_k = 200
         self.nms_thresh = 0.45  # nm_supressionでIOUがnms_thresh=0.45より大きいと、同一物体へのBBoxとみなす
 
+        # CPUで処理（GPU（GTX 1660 SUPER）よりは、かなり高速）
+        cpu_device = torch.device("cpu")
+        loc_data  = loc_data.to(cpu_device)
+        conf_data = conf_data.to(cpu_device)
+        dbox_list = dbox_list.to(cpu_device)
+
         # 各サイズを取得
         num_batch = loc_data.size(0)  # ミニバッチのサイズ
         num_dbox = loc_data.size(1)  # DBoxの数 = 8732

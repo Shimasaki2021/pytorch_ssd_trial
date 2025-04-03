@@ -19,3 +19,4 @@ output.cuda*
 output.cpu*
 data/test/
 vision/*
+weights/mb2-ssd-lite-mp-0_686_classes.txt
