@@ -6,7 +6,7 @@ import os
 import time
 import glob
 import copy
-from typing import List,Tuple,Any
+from typing import List,Tuple,Dict,Any
 
 from utils.ssd_model import SSD, DataTransform, VOCDataset, Anno_xml2list, nm_suppression
 import numpy as np
@@ -375,7 +375,15 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
     return
 
 
-def main(media_fpath:str, play_fps:float, weight_fpath:str, img_procs:List[ImageProc], num_batch:int, conf:float, overlap:float):
+# def main(media_fpath:str, play_fps:float, weight_fpath:str, img_procs:List[ImageProc], num_batch:int, conf:float, overlap:float):
+def main(media_fpath:str, cfg:Dict[str,Any]):
+
+    play_fps:float            = cfg["play_fps"]
+    weight_fpath:str          = cfg["ssd_model_weight_fpath"]
+    img_procs:List[ImageProc] = cfg["img_procs"]
+    num_batch:int             = cfg["ssd_model_num_batch"]
+    conf:float                = cfg["ssd_model_conf_lower_th"]
+    overlap:float             = cfg["ssd_model_iou_th"]
 
     if (os.path.isfile(media_fpath) == False) and (os.path.isdir(media_fpath) == False):
         print("Error: ", media_fpath, " is nothing.")
@@ -409,7 +417,38 @@ def main(media_fpath:str, play_fps:float, weight_fpath:str, img_procs:List[Image
 if __name__ == "__main__":
     args = sys.argv
 
-    weight_fpath = "./weights/ssd_best_od_cars.pth"
+    cfg = {
+        # 動画再生fps (負値＝入力動画のfpsそのまま)
+        "play_fps"     : -1.0,
+
+        # 検出範囲(1280x720、真ん中or右車線走行シーン、駐車場シーン用)
+        "img_procs"    : [ImageProc(0, 250, 350, 600), 
+                          ImageProc(250, 200, 550, 500), 
+                          ImageProc(480, 200, 780, 500), 
+                          ImageProc(730, 200, 1030, 500), 
+                          ImageProc(930, 250, 1280, 600)],
+
+        # 検出範囲(1280x720、左車線走行シーン用)
+        # "img_procs"    : [ImageProc(480, 200, 780, 500), 
+        #                   ImageProc(730, 200, 1030, 500), 
+        #                   ImageProc(930, 250, 1280, 600)], 
+
+        # 入力画像全域を検出範囲にする場合は以下を有効化
+        # "img_procs"    : [ImageProc()],
+
+        # (SSDモデル)パラメータ
+        "ssd_model_weight_fpath" : "./weights/ssd_best_od_cars.pth", 
+
+        # (SSDモデル) 信頼度confの足切り閾値
+        "ssd_model_conf_lower_th" : 0.5,
+
+        # (SSDモデル) 重複枠削除する重なり率(iou)閾値
+        "ssd_model_iou_th" : 0.5,
+
+        # (SSDモデル) バッチ処理数（＝検出範囲数 x フレーム数）
+        "ssd_model_num_batch" : 32,
+    }
+    # weight_fpath = "./weights/ssd_best_od_cars.pth"
 
     # 検出範囲
     #   (1280x720を)300x300/350x350に切り出し
@@ -419,25 +458,24 @@ if __name__ == "__main__":
     #              ImageProc(930, 250, 1280, 600)] 
 
     # 検出範囲(1280x720、真ん中or右車線走行シーン、駐車場シーン用)
-    img_procs = [ImageProc(0, 250, 350, 600), 
-                 ImageProc(250, 200, 550, 500), 
-                 ImageProc(480, 200, 780, 500), 
-                 ImageProc(730, 200, 1030, 500), 
-                 ImageProc(930, 250, 1280, 600)]
+    # img_procs = [ImageProc(0, 250, 350, 600), 
+    #              ImageProc(250, 200, 550, 500), 
+    #              ImageProc(480, 200, 780, 500), 
+    #              ImageProc(730, 200, 1030, 500), 
+    #              ImageProc(930, 250, 1280, 600)]
 
     # 入力画像全域を検出範囲にする場合は以下を有効化
     # img_procs = [ImageProc()] 
 
-    num_batch = 32
-    # num_batch = 1
-    conf      = 0.5
-    overlap   = 0.2
-    play_fps  = -1.0
+    # num_batch = 32
+    # conf      = 0.5
+    # overlap   = 0.2
+    # play_fps  = -1.0
 
     if len(args) < 2:
         print("Usage: ", args[0], " [movie/img file path] ([play fps])")
     else:
         if len(args) >= 3:
-            play_fps = float(args[2])
+            cfg["play_fps"] = float(args[2])
 
-        main(args[1], play_fps, weight_fpath, img_procs, num_batch, conf, overlap)
+        main(args[1], cfg)
