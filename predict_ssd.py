@@ -375,7 +375,6 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
     return
 
 
-# def main(media_fpath:str, play_fps:float, weight_fpath:str, img_procs:List[ImageProc], num_batch:int, conf:float, overlap:float):
 def main(media_fpath:str, cfg:Dict[str,Any]):
 
     play_fps:float            = cfg["play_fps"]
@@ -448,29 +447,6 @@ if __name__ == "__main__":
         # (SSDモデル) バッチ処理数（＝検出範囲数 x フレーム数）
         "ssd_model_num_batch" : 32,
     }
-    # weight_fpath = "./weights/ssd_best_od_cars.pth"
-
-    # 検出範囲
-    #   (1280x720を)300x300/350x350に切り出し
-    # img_procs = [ImageProc(180, 250, 530, 600), 
-    #              ImageProc(480, 200, 780, 500), 
-    #              ImageProc(730, 200, 1030, 500), 
-    #              ImageProc(930, 250, 1280, 600)] 
-
-    # 検出範囲(1280x720、真ん中or右車線走行シーン、駐車場シーン用)
-    # img_procs = [ImageProc(0, 250, 350, 600), 
-    #              ImageProc(250, 200, 550, 500), 
-    #              ImageProc(480, 200, 780, 500), 
-    #              ImageProc(730, 200, 1030, 500), 
-    #              ImageProc(930, 250, 1280, 600)]
-
-    # 入力画像全域を検出範囲にする場合は以下を有効化
-    # img_procs = [ImageProc()] 
-
-    # num_batch = 32
-    # conf      = 0.5
-    # overlap   = 0.2
-    # play_fps  = -1.0
 
     if len(args) < 2:
         print("Usage: ", args[0], " [movie/img file path] ([play fps])")
