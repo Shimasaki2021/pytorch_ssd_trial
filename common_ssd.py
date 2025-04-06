@@ -17,6 +17,8 @@ from sklearn.model_selection import train_test_split
 from utils.ssd_model import VOCDataset, DataTransform, Anno_xml2list, od_collate_fn
 from utils.data_augumentation import jaccard_numpy
 
+from vision.ssd.config import mobilenetv1_ssd_config as ssd_mb2_cfg
+
 class DetResult:
     def __init__(self, class_name:str, bbox:np.ndarray, score:float, is_det_cur=True):
         self.class_name_ = class_name
@@ -164,13 +166,13 @@ class ImageProc:
         return ret_results
 
     @staticmethod
-    def drawResultSummary(img_org:np.ndarray, frame_no:int, frame_num:int, dev_type:str, time_proc_sec:float, pen:DrawPen) -> np.ndarray:
+    def drawResultSummary(img_org:np.ndarray, frame_no:int, frame_num:int, dev_type:str, net_type:str, time_proc_sec:float, pen:DrawPen) -> np.ndarray:
         # FPS等を描画
         str_frame = ""
         if frame_num > 0:
             str_frame = f"{frame_no:05}/{frame_num:05} "
         
-        str_fps = f"fps={(1.0 / time_proc_sec):.1f} dev:{dev_type}"
+        str_fps = f"net:{net_type} dev:{dev_type} fps={(1.0 / time_proc_sec):.1f}"
 
         ImageProc.drawText(img_org, str_frame + str_fps, (10, 15), pen.char_size_, pen.col_, pen.thick_, True)
         
@@ -318,7 +320,7 @@ class MovieLoader:
 
 class VocDataSetMng:
 
-    def __init__(self, data_path:str, voc_classes:List[str], color_mean:List[int], input_size:int, batch_size:int, test_rate:float):
+    def __init__(self, data_path:str, voc_classes:List[str], input_size:int, color_mean:List[int], color_std:float, batch_size:int, test_rate:float):
 
         self.batch_size_ = batch_size
         self.test_rate_  = test_rate
@@ -350,12 +352,12 @@ class VocDataSetMng:
         self.train_dataset_ = VOCDataset(train_img_list, 
                                         train_anno_list, 
                                         phase="train", 
-                                        transform=DataTransform(input_size, color_mean), 
+                                        transform=DataTransform(input_size, color_mean, color_std), 
                                         transform_anno=parse_anno)
         self.val_dataset_   = VOCDataset(val_img_list, 
                                         val_anno_list, 
                                         phase="val", 
-                                        transform=DataTransform(input_size, color_mean), 
+                                        transform=DataTransform(input_size, color_mean, color_std), 
                                         transform_anno=parse_anno)
 
         # DataLoaderを作成する
@@ -449,10 +451,13 @@ class VocDataSetMng:
 
 class SSDModel:
 
-    def __init__(self, device:torch.device, voc_classes:List[str]):
-        # SSD300の設定
-        self.ssd_cfg_ = {
-            "num_classes"    : len(voc_classes) + 1,         # 背景クラスを含めた合計クラス数
+    def __init__(self, device:torch.device, voc_classes:List[str], net_type:str):
+        self.net_type_    = net_type
+        self.num_classes_ = len(voc_classes) + 1
+
+        # SSD300(VGGベース)の設定
+        self.ssd_vgg_cfg_ = {
+            "num_classes"    : self.num_classes_,            # 背景クラスを含めた合計クラス数
             "input_size"     : 300,                          # 画像の入力サイズ
             "bbox_aspect_num": [4, 6, 6, 6, 4, 4],           # 出力するDBoxのアスペクト比の種類
             "feature_maps"   : [38, 19, 10, 5, 3, 1],        # 各sourceの画像サイズ
@@ -461,8 +466,24 @@ class SSDModel:
             "max_sizes"      : [45, 99, 153, 207, 261, 315], # DBOXの大きさを決める
             "aspect_ratios"  : [[2], [2, 3], [2, 3], [2, 3], [2], [2]],
         }
-        self.color_mean_ = (104, 117, 123)  # (BGR)の色の平均値
-        self.input_size_ = 300              # 画像のinputサイズ        
+
+        if self.net_type_ == "mb2-ssd":
+            # (BGR)の色の平均値
+            self.color_mean_ = np.array([ssd_mb2_cfg.image_mean[2], 
+                                         ssd_mb2_cfg.image_mean[1], 
+                                         ssd_mb2_cfg.image_mean[0]])
+            self.color_std_ = ssd_mb2_cfg.image_std
+
+            # 画像のinputサイズ
+            self.input_size_ = ssd_mb2_cfg.image_size
+
+        else:
+            # (BGR)の色の平均値
+            self.color_mean_ = np.array([104, 117, 123])
+            self.color_std_  = 1.0
+
+            # 画像のinputサイズ
+            self.input_size_ = 300
 
         self.device_      = device
         self.voc_classes_ = voc_classes
@@ -491,19 +512,19 @@ class Logger:
         return
 
     @staticmethod
-    def createOutputDir(dev_name:str, dir_name:str) -> str:
+    def createOutputDir(dev_name:str, net_type:str, dir_name:str) -> str:
         if dir_name != "":
-            outdir_path = f"./output.{dev_name}/{dir_name}"
+            outdir_path = f"./output.{dev_name}.{net_type}/{dir_name}"
         else:
-            outdir_path = f"./output.{dev_name}"
+            outdir_path = f"./output.{dev_name}.{net_type}"
 
         if os.path.isdir(outdir_path) == False:
             os.makedirs(outdir_path)
         return outdir_path
 
-    def openLogFile(self, dev_name:str, dir_name:str, f_name:str, mode:str):
+    def openLogFile(self, dev_name:str, net_type:str, dir_name:str, f_name:str, mode:str):
         if self.is_out_ == True:
-            self.outdir_ = Logger.createOutputDir(dev_name, dir_name)
+            self.outdir_ = Logger.createOutputDir(dev_name, net_type, dir_name)
             self.log_fp_ = open(f"{self.outdir_}/{f_name}", mode)
         return
 

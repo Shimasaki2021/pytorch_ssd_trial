@@ -400,7 +400,7 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
         output_imgdir_name = os.path.splitext(os.path.basename(movie_fpath))[0] + ".dbg"
     else:
         output_imgdir_name = os.path.splitext(os.path.basename(movie_fpath))[0] + ".blur"
-    output_imgdir_path = Logger.createOutputDir(ssd_model.device_.type, output_imgdir_name)
+    output_imgdir_path = Logger.createOutputDir(ssd_model.device_.type, ssd_model.net_type_, output_imgdir_name)
 
     # 入力動画読み込み
     movie_loader       = MovieLoader(movie_fpath, play_fps, num_batch_frame)
@@ -474,6 +474,7 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
                         # FPS等を描画
                         img_org = ImageProc.drawResultSummary(img_org, batch_frame_no, num_frame, 
                                                               ssd_model.device_.type, 
+                                                              ssd_model.net_type_,
                                                               time_per_batch,
                                                               DrawPen((255,255,255), 2, 0.6))
 
@@ -505,6 +506,7 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
 
 def main(media_fpath:str, cfg:Dict[str,Any]):
 
+    net_type:str     = cfg["ssd_model_net_type"]
     weight_fpath:str = cfg["ssd_model_weight_fpath"]
 
     if (os.path.isfile(media_fpath) == False) and (os.path.isdir(media_fpath) == False):
@@ -516,7 +518,7 @@ def main(media_fpath:str, cfg:Dict[str,Any]):
         # device = torch.device("cpu")
         print("使用デバイス：", device)
 
-        ssd_model = SSDModelDetector(device, weight_fpath)
+        ssd_model = SSDModelDetector(device, net_type, weight_fpath)
 
         media_fname:str = os.path.basename(media_fpath)
         if ".mp4" in media_fname:
@@ -571,8 +573,16 @@ if __name__ == "__main__":
         # ナンバープレートが車に所有されているかどうかの判定閾値
         "own_car_rate_th" : 0.5,
 
-        # (SSDモデル)パラメータ
-        "ssd_model_weight_fpath" : "./weights/ssd_best_od_cars.pth", 
+        # (SSDモデル)ネットワーク種別/パラメータ/バッチ処理数(※)
+        #   (※) バッチ処理数 ＝検出範囲数 x フレーム数
+        # "ssd_model_net_type"     : "vgg16-ssd",
+        # "ssd_model_weight_fpath" : "./weights/vgg16-ssd_best_od_cars.pth", 
+        # "ssd_model_num_batch" : 32,
+
+        # (SSDモデル)ネットワーク種別/パラメータ/バッチ処理数
+        "ssd_model_net_type"     : "mb2-ssd",
+        "ssd_model_weight_fpath" : "./weights/mb2-ssd_best_od_cars.pth", 
+        "ssd_model_num_batch" : 64,
 
         # (SSDモデル) 信頼度confの足切り閾値
         "ssd_model_conf_lower_th" : 0.5,
@@ -580,9 +590,6 @@ if __name__ == "__main__":
         # (SSDモデル) 重複枠削除する重なり率(iou)閾値
         # "ssd_model_iou_th" : 0.5,
         "ssd_model_iou_th" : 0.4,
-
-        # (SSDモデル) バッチ処理数（＝検出範囲数 x フレーム数）
-        "ssd_model_num_batch" : 32,
     }
 
     root = tk.Tk()

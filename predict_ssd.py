@@ -8,7 +8,8 @@ import glob
 import copy
 from typing import List,Tuple,Dict,Any
 
-from utils.ssd_model import SSD, DataTransform, VOCDataset, Anno_xml2list, nm_suppression
+from utils.ssd_model import SSD as SSD_vgg
+from utils.ssd_model import DataTransform, VOCDataset, Anno_xml2list, nm_suppression
 import numpy as np
 from tqdm import tqdm
 import torch
@@ -16,25 +17,30 @@ import torchvision
 
 from common_ssd import ImageProc, MovieLoader, SSDModel, DetResult, AnnoData, DrawPen, Logger, makeVocClassesTxtFpath
 
+from vision.ssd.mobilenet_v2_ssd_lite import create_mobilenetv2_ssd_lite, create_mobilenetv2_ssd_lite_predictor
+
 # SSDモデル作成＆推論
 class SSDModelDetector(SSDModel):
 
-    def __init__(self, device:torch.device, weight_fpath:str):
+    def __init__(self, device:torch.device, net_type:str, weight_fpath:str):
         # 学習済み重みをロード
         (net_weights, voc_classes) = self.loadWeight(weight_fpath, device)
 
-        super().__init__(device, voc_classes)
+        super().__init__(device, voc_classes, net_type)
 
         # SSDネットワークモデル
-        self.net_ = SSD(phase="inference", cfg=self.ssd_cfg_)
-        self.net_.load_state_dict(net_weights)
-        self.net_.eval()
-
-        # ネットワークをDeviceへ
-        self.net_.to(self.device_)
+        if self.net_type_ == "mb2-ssd":
+            net_body  = create_mobilenetv2_ssd_lite(self.num_classes_, is_test=True)
+            net_body.load_state_dict(net_weights)
+            self.net_ = create_mobilenetv2_ssd_lite_predictor(net_body, candidate_size=200, device=device)
+        else:
+            self.net_ = SSD_vgg(phase="inference", cfg=self.ssd_vgg_cfg_)
+            self.net_.load_state_dict(net_weights)
+            self.net_.eval()
+            self.net_.to(self.device_)
 
         # 前処理を行うクラス(DataTransform)のインスタンス作成
-        self.transform_ = DataTransform(self.input_size_, self.color_mean_)
+        self.transform_ = DataTransform(self.input_size_, self.color_mean_, self.color_std_)
 
         # (torch.compile) Windows+anaconda環境では使用不可。WSL2+Ubuntu環境では使用可。
         #   GPU=GTX1660SUPERでは、以下Warningが出るが一応実行は可能。効果はわずか（1分の動画の処理時間が、12分7秒 → 11分57秒）
@@ -198,7 +204,7 @@ def main_play_movie(img_procs:List[ImageProc], num_batch:int, ssd_model:SSDModel
 
     # 画像出力用フォルダ作成
     output_imgdir_name = os.path.splitext(os.path.basename(movie_fpath))[0]
-    output_imgdir_path = Logger.createOutputDir(ssd_model.device_.type, output_imgdir_name)
+    output_imgdir_path = Logger.createOutputDir(ssd_model.device_.type, ssd_model.net_type_, output_imgdir_name)
 
     # 入力動画読み込み
     movie_loader = MovieLoader(movie_fpath, play_fps, num_batch_frame)
@@ -232,6 +238,7 @@ def main_play_movie(img_procs:List[ImageProc], num_batch:int, ssd_model:SSDModel
                     # FPS等を描画
                     img_org = ImageProc.drawResultSummary(img_org, batch_frame_no, num_frame, 
                                                         ssd_model.device_.type, 
+                                                        ssd_model.net_type_,
                                                         time_per_batch,
                                                         DrawPen((255,255,255), 2, 0.6))
 
@@ -254,17 +261,17 @@ def main_play_movie(img_procs:List[ImageProc], num_batch:int, ssd_model:SSDModel
 def main_det_img(img_procs:List[ImageProc], ssd_model:SSDModelDetector, img_fpath:str, conf:float, overlap:float):
 
     # 結果出力フォルダ作成
-    output_imgdir_path = Logger.createOutputDir(ssd_model.device_.type, "")
+    output_imgdir_path = Logger.createOutputDir(ssd_model.device_.type, ssd_model.net_type_, "")
 
     # 入力画像読み込み
     img_org:np.ndarray = cv2.imread(img_fpath) 
 
     if img_org is not None:
-        
-        time_s = time.perf_counter()
 
         # SSD物体検出
+        time_s = time.perf_counter()
         det_results = ssd_model.predict(img_procs, [img_org], conf, overlap)
+        time_e = time.perf_counter()
 
         # 検出範囲描画
         for img_proc in img_procs:
@@ -273,11 +280,11 @@ def main_det_img(img_procs:List[ImageProc], ssd_model:SSDModelDetector, img_fpat
         # 検出結果描画
         img_org = ImageProc.drawResultDet(img_org, det_results[0], DrawPen((255,255,255), 1, 0.4))
 
-        time_e = time.perf_counter()
 
         # FPS等を描画
         img_org = ImageProc.drawResultSummary(img_org, 0, 0, 
                                              ssd_model.device_.type, 
+                                             ssd_model.net_type_,
                                              (time_e - time_s),
                                              DrawPen((255,255,255), 2, 0.6))
 
@@ -301,7 +308,7 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
     else:
         output_imgdir_name = os.path.basename(img_dir)
 
-    output_imgdir_path = Logger.createOutputDir(ssd_model.device_.type, output_imgdir_name)
+    output_imgdir_path = Logger.createOutputDir(ssd_model.device_.type, ssd_model.net_type_, output_imgdir_name)
 
     # 入力画像ファイルリスト読み込み
     parse_anno = Anno_xml2list(ssd_model.voc_classes_)
@@ -378,8 +385,9 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
 def main(media_fpath:str, cfg:Dict[str,Any]):
 
     play_fps:float            = cfg["play_fps"]
-    weight_fpath:str          = cfg["ssd_model_weight_fpath"]
     img_procs:List[ImageProc] = cfg["img_procs"]
+    net_type:str              = cfg["ssd_model_net_type"]
+    weight_fpath:str          = cfg["ssd_model_weight_fpath"]
     num_batch:int             = cfg["ssd_model_num_batch"]
     conf:float                = cfg["ssd_model_conf_lower_th"]
     overlap:float             = cfg["ssd_model_iou_th"]
@@ -393,7 +401,7 @@ def main(media_fpath:str, cfg:Dict[str,Any]):
         # device = torch.device("cpu")
         print("使用デバイス：", device)
 
-        ssd_model = SSDModelDetector(device, weight_fpath)
+        ssd_model = SSDModelDetector(device, net_type, weight_fpath)
 
         media_fname:str = os.path.basename(media_fpath)
         if ".mp4" in media_fname:
@@ -421,22 +429,30 @@ if __name__ == "__main__":
         "play_fps"     : -1.0,
 
         # 検出範囲(1280x720、真ん中or右車線走行シーン、駐車場シーン用)
-        # "img_procs"    : [ImageProc(0, 250, 350, 600), 
-        #                   ImageProc(250, 200, 550, 500), 
-        #                   ImageProc(480, 200, 780, 500), 
-        #                   ImageProc(730, 200, 1030, 500), 
-        #                   ImageProc(930, 250, 1280, 600)],
+        "img_procs"    : [ImageProc(0, 250, 350, 600), 
+                          ImageProc(250, 200, 550, 500), 
+                          ImageProc(480, 200, 780, 500), 
+                          ImageProc(730, 200, 1030, 500), 
+                          ImageProc(930, 250, 1280, 600)],
 
         # 検出範囲(1280x720、左車線走行シーン用)
-        "img_procs"    : [ImageProc(480, 200, 780, 500), 
-                          ImageProc(730, 200, 1030, 500), 
-                          ImageProc(930, 250, 1280, 600)], 
+        # "img_procs"    : [ImageProc(480, 200, 780, 500), 
+        #                   ImageProc(730, 200, 1030, 500), 
+        #                   ImageProc(930, 250, 1280, 600)], 
 
         # 入力画像全域を検出範囲にする場合は以下を有効化
         # "img_procs"    : [ImageProc()],
 
-        # (SSDモデル)パラメータ
-        "ssd_model_weight_fpath" : "./weights/ssd_best_od_cars.pth", 
+        # (SSDモデル)ネットワーク種別/パラメータ/バッチ処理数(※)
+        #   (※) バッチ処理数 ＝検出範囲数 x フレーム数
+        # "ssd_model_net_type"     : "vgg16-ssd",
+        # "ssd_model_weight_fpath" : "./weights/vgg16-ssd_best_od_cars.pth", 
+        # "ssd_model_num_batch" : 32,
+
+        # (SSDモデル)ネットワーク種別/パラメータ/バッチ処理数
+        "ssd_model_net_type"     : "mb2-ssd",
+        "ssd_model_weight_fpath" : "./weights/mb2-ssd_best_od_cars.pth", 
+        "ssd_model_num_batch" : 64,
 
         # (SSDモデル) 信頼度confの足切り閾値
         "ssd_model_conf_lower_th" : 0.5,
@@ -444,8 +460,6 @@ if __name__ == "__main__":
         # (SSDモデル) 重複枠削除する重なり率(iou)閾値
         "ssd_model_iou_th" : 0.5,
 
-        # (SSDモデル) バッチ処理数（＝検出範囲数 x フレーム数）
-        "ssd_model_num_batch" : 32,
     }
 
     if len(args) < 2:

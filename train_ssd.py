@@ -4,7 +4,8 @@
 import os
 import sys
 import time
-from typing import List
+import numpy as np
+from typing import List,Dict,Any
 from io import TextIOWrapper
 import datetime
 
@@ -15,10 +16,14 @@ import torch.nn.init as init
 import torch.optim as optim
 import torchvision
 
-from utils.ssd_model import SSD, MultiBoxLoss
+from utils.ssd_model import SSD as SSD_vgg
+from utils.ssd_model import MultiBoxLoss
 
 from common_ssd import SSDModel, VocDataSetMng, Logger, makeVocClassesTxtFpath
 
+from vision.ssd.mobilenet_v2_ssd_lite import create_mobilenetv2_ssd_lite
+from vision.ssd.ssd import SSD as SSD_mb2
+# from vision.ssd.ssd import _xavier_init_
 
 class SSDModelTrainerDebug(Logger):
 
@@ -32,12 +37,12 @@ class SSDModelTrainerDebug(Logger):
         self.JST_ = datetime.timezone(t_delta, 'JST')
         return
 
-    def openLogFile(self, dev_name:str, res_weight_fpath:str, fname:str):
+    def openLogFile(self, dev_name:str, net_type:str, res_weight_fpath:str, fname:str):
         if self.is_out_ == True:
             self.res_weight_fpath_ = res_weight_fpath
 
             res_weight_fname   = os.path.splitext(os.path.basename(res_weight_fpath))[0]
-            super().openLogFile(dev_name, f"train.{res_weight_fname}", fname, "w")
+            super().openLogFile(dev_name, net_type, f"train.{res_weight_fname}", fname, "w")
         return
 
     def outputLogModuleInfo(self, mod_name:str, mod_list:nn.ModuleList):
@@ -54,15 +59,30 @@ class SSDModelTrainerDebug(Logger):
 
                 self.log_fp_.write("\n")
         return
-        
-    def outputLogNetInfo(self, net:SSD):
+    
+    def outputLogNetInfo(self, net):
         if self.isOutputLog() == True:
-            self.log_fp_.write("\n == net ==\n")
-            self.outputLogModuleInfo("vgg",    net.vgg)
-            self.outputLogModuleInfo("extras", net.extras)
-            self.outputLogModuleInfo("loc",    net.loc)
-            self.outputLogModuleInfo("conf",   net.conf)
-            self.log_fp_.write("\n")
+            if isinstance(net, SSD_mb2) == True:
+                self.outputLogNetInfoSSDmb2(net)
+            else:
+                self.outputLogNetInfoSSDvgg(net)
+        return
+
+    def outputLogNetInfoSSDvgg(self, net:SSD_vgg):
+        self.log_fp_.write("\n == net(vgg) ==\n")
+        self.outputLogModuleInfo("vgg",    net.vgg)
+        self.outputLogModuleInfo("extras", net.extras)
+        self.outputLogModuleInfo("loc",    net.loc)
+        self.outputLogModuleInfo("conf",   net.conf)
+        self.log_fp_.write("\n")
+        return
+    def outputLogNetInfoSSDmb2(self, net:SSD_mb2):
+        self.log_fp_.write("\n == net(mobile net v2 lite) ==\n")
+        self.outputLogModuleInfo("basenet",                net.base_net)
+        self.outputLogModuleInfo("extras",                 net.extras)
+        self.outputLogModuleInfo("regression_headers",     net.regression_headers)
+        self.outputLogModuleInfo("classification_headers", net.classification_headers)
+        self.log_fp_.write("\n")
         return
     
     def outputLogSummary(self,dev_name:str, learn_data_path:str, epoch:int, val_loss:float):
@@ -111,28 +131,15 @@ class SSDModelTrainerDebug(Logger):
 # SSDモデル作成＆学習
 class SSDModelTrainer(SSDModel):
 
-    def __init__(self, device:torch.device, voc_classes:List[str], freeze_layer:int):
-        super().__init__(device, voc_classes)
+    def __init__(self, device:torch.device, net_type:str, weight_fpath:str, voc_classes:List[str], freeze_layer:int):
+        super().__init__(device, voc_classes, net_type)
 
         # SSDネットワークモデル
-        self.net_ = SSD(phase="train", cfg=self.ssd_cfg_)
+        if self.net_type_ == "mb2-ssd":
+            self.net_ = self.createSSDmb2(self.num_classes_, weight_fpath, freeze_layer)
+        else:
+            self.net_ = self.createSSDvgg(weight_fpath, self.ssd_vgg_cfg_, freeze_layer)
 
-        # SSDのvggに、初期の重みを設定
-        vgg_weights = torch.load("./weights/vgg16_reducedfc.pth", weights_only=True) # FutureWarning: You are using torch.load..対策
-        self.net_.vgg.load_state_dict(vgg_weights)
-
-        # VGGの重みをfreeze
-        for idx,module in enumerate(self.net_.vgg):
-            if idx <= freeze_layer:
-                for param in module.parameters():
-                    param.requires_grad = False
-
-        # SSDのextras, loc, confには、Heの初期値を適用
-        self.net_.extras.apply(SSDModelTrainer.initWeight)
-        self.net_.loc.apply(SSDModelTrainer.initWeight)
-        self.net_.conf.apply(SSDModelTrainer.initWeight)
-
-        # ネットワークをDeviceへ
         self.net_.to(device)
 
         # 損失関数の設定
@@ -145,6 +152,57 @@ class SSDModelTrainer(SSDModel):
 
         return
     
+    @staticmethod
+    def createSSDvgg(weight_fpath:str, cfg_vgg:Dict[str,Any], freeze_layer:int) -> SSD_vgg:
+
+        # SSD作成
+        net = SSD_vgg(phase="train", cfg=cfg_vgg)
+
+        # ベースnetの初期パラメータ設定＆freeze
+        weight_data = torch.load(weight_fpath, weights_only=True) # FutureWarning: You are using torch.load..対策
+        net.vgg.load_state_dict(weight_data) 
+
+        for idx,module in enumerate(net.vgg):
+            if idx <= freeze_layer:
+                for param in module.parameters():
+                    param.requires_grad = False
+
+        # Heの初期値を適用
+        net.extras.apply(SSDModelTrainer.initWeight)
+        net.loc.apply(SSDModelTrainer.initWeight)
+        net.conf.apply(SSDModelTrainer.initWeight)
+
+        return net
+
+    @staticmethod
+    def createSSDmb2(num_classes:int, weight_fpath:str, freeze_layer:int) -> SSD_mb2:
+
+        # SSD作成
+        net = create_mobilenetv2_ssd_lite(num_classes)
+
+        # ベースnetの初期パラメータ設定＆freeze
+        weight_data = torch.load(weight_fpath, weights_only=True) # FutureWarning: You are using torch.load..対策
+        net.base_net.load_state_dict(weight_data) 
+
+        for idx,module in enumerate(net.base_net):
+            if idx <= freeze_layer:
+                for param in module.parameters():
+                    param.requires_grad = False
+
+        # Xavierの初期値を適用
+        # net.source_layer_add_ons.apply(_xavier_init_)
+        # net.extras.apply(_xavier_init_)
+        # net.classification_headers.apply(_xavier_init_)
+        # net.regression_headers.apply(_xavier_init_)
+
+        # Heの初期値を適用
+        net.source_layer_add_ons.apply(SSDModelTrainer.initWeight)
+        net.extras.apply(SSDModelTrainer.initWeight)
+        net.classification_headers.apply(SSDModelTrainer.initWeight)
+        net.regression_headers.apply(SSDModelTrainer.initWeight)
+        return net
+
+
     @staticmethod
     def initWeight(m):
         if isinstance(m, nn.Conv2d):
@@ -159,7 +217,7 @@ class SSDModelTrainer(SSDModel):
 
         # debug
         debug_train = SSDModelTrainerDebug(True, 1)
-        debug_train.openLogFile(self.device_.type, res_weight_fpath, "train_log.csv")
+        debug_train.openLogFile(self.device_.type, self.net_type_, res_weight_fpath, "train_log.csv")
 
         # ネットワークがある程度固定であれば、高速化させる
         torch.backends.cudnn.benchmark = True
@@ -192,11 +250,10 @@ class SSDModelTrainer(SSDModel):
                 # データローダーからminibatchずつ取り出すループ
                 with tqdm(dataloaders_dict[phase], desc=phase, file=sys.stdout) as iterator:
                     for batch_idx, (images, targets) in enumerate(iterator):
-                        
+
                         # GPUが使えるならGPUにデータを送る
                         images  = images.to(self.device_)
-                        targets = [ann.to(self.device_)
-                                for ann in targets]  # リストの各要素のテンソルをGPUへ
+                        targets = [target.to(self.device_) for target in targets]  
 
                         # debug:入力画像ダンプ
                         debug_train.dumpInputImage(epoch, images, phase, batch_idx)
@@ -206,12 +263,10 @@ class SSDModelTrainer(SSDModel):
 
                         # 順伝搬（forward）計算
                         with torch.set_grad_enabled(phase == "train"):
-                            # 順伝搬（forward）計算
-                            outputs = self.net_(images)
-
-                            # 損失の計算
+                            # 順伝搬（forward）/損失の計算
+                            outputs        = self.net_(images)
                             loss_l, loss_c = self.criterion_(outputs, targets)
-                            loss = loss_l + loss_c
+                            loss           = loss_l + loss_c
 
                             # 訓練時はバックプロパゲーション
                             if phase == "train":
@@ -272,7 +327,17 @@ class SSDModelTrainer(SSDModel):
         return
 
 
-def main(num_epochs:int, data_path:str, voc_classes:List[str], freeze_layer:int, batch_size:int, test_rate:float):
+def main(cfg:Dict[str,Any]):
+
+    num_epochs:int        = cfg["train_num_epoch"]
+    data_path:str         = cfg["train_data_path"]
+    voc_classes:List[str] = cfg["train_voc_classes"]
+    test_rate:float       = cfg["train_data_test_rate"]
+    batch_size:int        = cfg["train_batch_size"]
+
+    freeze_layer:int      = cfg["ssd_model_freeze_layer"]
+    net_type:str          = cfg["ssd_model_net_type"]
+    weight_fpath:str      = cfg["ssd_model_init_weight_fpath"]
 
     if os.path.isdir(data_path) == False:
         print("Error: ", data_path, " is nothing.")
@@ -282,17 +347,17 @@ def main(num_epochs:int, data_path:str, voc_classes:List[str], freeze_layer:int,
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         print("使用デバイス：", device)
 
-        ssd_model = SSDModelTrainer(device, voc_classes, freeze_layer)
+        ssd_model = SSDModelTrainer(device, net_type, weight_fpath, voc_classes, freeze_layer)
     
         # データセット作成
-        voc_dataset = VocDataSetMng(data_path, voc_classes, ssd_model.color_mean_, ssd_model.input_size_, batch_size, test_rate)
+        voc_dataset = VocDataSetMng(data_path, voc_classes, ssd_model.input_size_, ssd_model.color_mean_, ssd_model.color_std_, batch_size, test_rate)
         for phase in ["train", "val"]:
             for class_name in voc_dataset.voc_classes_:
                 (obj_num, _, _) = voc_dataset.getAnnoInfo(phase, class_name)
                 print(f"DataSet({phase}): num={obj_num} (class:{class_name})")
 
         # SSDモデルの学習
-        res_weight_fpath = "./weights/ssd_best_" + os.path.basename(data_path) + ".pth"
+        res_weight_fpath = f"./weights/{net_type}_best_{os.path.basename(data_path)}.pth"
         ssd_model.train(voc_dataset, num_epochs, res_weight_fpath)
 
     return
@@ -300,25 +365,36 @@ def main(num_epochs:int, data_path:str, voc_classes:List[str], freeze_layer:int,
 if __name__ == "__main__":
     args = sys.argv
 
-    # 学習データを置いたディレクトリ
-    data_path    = "./data/od_cars"
+    cfg = {
+        # 学習データを置いたディレクトリ
+        "train_data_path"    : "./data/od_cars",
 
-    # 学習クラス名
-    voc_classes  = ["car","number"]
+        # 学習クラス名
+        "train_voc_classes"  : ["car","number"],
 
-    # SSDモデルで重みを更新しないレイヤー（入力層～freeze_layer層までの重みは更新しない）
-    freeze_layer = 5
+        # 検証用画像の割合（全体のtest_rateを検証用画像にする）
+        "train_data_test_rate" : 0.1,
 
-    # epoch数（引数指定なしの場合のDefault値）
-    num_epochs = 500
+        # epoch数（引数指定なしの場合のDefault値）
+        "train_num_epoch" : 500,
 
-    # バッチサイズ
-    batch_size = 16
-    
-    # 検証用画像の割合（全体のtest_rateを検証用画像にする）
-    test_rate  = 0.1
+        # バッチ処理数（＝検出範囲数 x フレーム数）
+        "train_batch_size" : 16,
+
+        # (SSDモデル)ネットワーク種別/ベースnet初期パラメータ/freezeレイヤー(※)
+        #    (※) 入力層～freeze_layer層までの重みは更新しない
+        # "ssd_model_net_type"          : "vgg16-ssd",
+        # "ssd_model_init_weight_fpath" : "./weights/vgg16_reducedfc.pth", 
+        # "ssd_model_freeze_layer"      : 5,
+
+        # (SSDモデル)ネットワーク種別/ベースnet初期パラメータ
+        "ssd_model_net_type"          : "mb2-ssd",
+        "ssd_model_init_weight_fpath" : "./weights/mb2-imagenet-71_8.pth", 
+        "ssd_model_freeze_layer"      : 0,
+
+    }
 
     if len(args) >= 2:
-        num_epochs = int(args[1])
+        cfg["train_num_epoch"] = int(args[1])
 
-    main(num_epochs, data_path, voc_classes, freeze_layer, batch_size, test_rate)
+    main(cfg)

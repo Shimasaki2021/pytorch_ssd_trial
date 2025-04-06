@@ -411,3 +411,10 @@ class PhotometricDistort(object):
             distort = Compose(self.pd[1:])
         im, boxes, labels = distort(im, boxes, labels)
         return self.rand_light_noise(im, boxes, labels)
+
+class ScaleByStd:
+    def __init__(self, std: float):
+        self.std = std
+ 
+    def __call__(self, img, boxes=None, labels=None):
+        return (img / self.std, boxes, labels)

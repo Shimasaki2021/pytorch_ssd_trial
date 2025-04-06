@@ -13,11 +13,10 @@ weights/vgg16_reducedfc.pth
 weights/mb2-imagenet-71_8.pth
 weights/mb2-ssd-lite-mp-0_686.pth
 weights/mobilenet-v1-ssd-mp-0_675.pth
-weights/voc-model-labels.txt
+weights/mb2-ssd-lite-mp-0_686_classes.txt
 test.pu
 output.cuda*
 output.cpu*
 data/test/
-vision/*
 weights/mb2-ssd-lite-mp-0_686_classes.txt
 data/od_cars.zip
