@@ -381,13 +381,13 @@ if __name__ == "__main__":
         # バッチ処理数（＝検出範囲数 x フレーム数）
         "train_batch_size" : 16,
 
-        # (SSDモデル)ネットワーク種別/ベースnet初期パラメータ/freezeレイヤー(※)
+        # (SSDモデル:VGGベース)ネットワーク種別/ベースnet初期パラメータ/freezeレイヤー(※)
         #    (※) 入力層～freeze_layer層までの重みは更新しない
         # "ssd_model_net_type"          : "vgg16-ssd",
         # "ssd_model_init_weight_fpath" : "./weights/vgg16_reducedfc.pth", 
         # "ssd_model_freeze_layer"      : 5,
 
-        # (SSDモデル)ネットワーク種別/ベースnet初期パラメータ
+        # (SSDモデル:mobilenetベース)ネットワーク種別/ベースnet初期パラメータ
         "ssd_model_net_type"          : "mb2-ssd",
         "ssd_model_init_weight_fpath" : "./weights/mb2-imagenet-71_8.pth", 
         "ssd_model_freeze_layer"      : 0,

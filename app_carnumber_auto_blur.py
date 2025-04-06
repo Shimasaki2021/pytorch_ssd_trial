@@ -573,13 +573,13 @@ if __name__ == "__main__":
         # ナンバープレートが車に所有されているかどうかの判定閾値
         "own_car_rate_th" : 0.5,
 
-        # (SSDモデル)ネットワーク種別/パラメータ/バッチ処理数(※)
+        # (SSDモデル:VGGベース)ネットワーク種別/パラメータ/バッチ処理数(※)
         #   (※) バッチ処理数 ＝検出範囲数 x フレーム数
         # "ssd_model_net_type"     : "vgg16-ssd",
         # "ssd_model_weight_fpath" : "./weights/vgg16-ssd_best_od_cars.pth", 
         # "ssd_model_num_batch" : 32,
 
-        # (SSDモデル)ネットワーク種別/パラメータ/バッチ処理数
+        # (SSDモデル:mobilenetベース)ネットワーク種別/パラメータ/バッチ処理数
         "ssd_model_net_type"     : "mb2-ssd",
         "ssd_model_weight_fpath" : "./weights/mb2-ssd_best_od_cars.pth", 
         "ssd_model_num_batch" : 64,

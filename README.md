@@ -6,23 +6,29 @@ pytorch ssdの転移学習を実行するソース一式です。
 | ディレクトリ,ファイル | 説明 |
 |---|---|
 | utils/ | SSDモデル実装等のソース（モデルはVGG16ベースのSSD300）  |
+| vision/ | SSDモデル実装等のソース（モデルはmobilenet-v2-liteベースのSSD300） |
 | common_ssd.py | 推論/学習共通部分のソース |
 | train_ssd.py | 学習実行ソース |
 | predict_ssd.py | 検知（推論）実行ソース |
 | movie_player.py | 動画(mp4)から学習用画像切り出しツール(ソース) |
 | app_carnumber_auto_blur.py | ナンバープレート自動ぼかしアプリ(ソース) |
 | data/od_cars_org_F00000.jpg | テストデータ（推論用画像） |
-| data/od_cars_sample/ | テストデータ（学習用画像、アノテーションデータ） |
-| weights/ssd_best_od_cars.pth | 学習済みSSD重みデータ(車、ナンバープレートを学習済) |
-| weights/ssd_best_od_cars_classes.txt | ssd_best_od_cars.pthで学習したクラス名 |
+| data/od_cars_sample/ | テストデータ（学習用画像、アノテーションデータのサンプル） |
+| weights/vgg16-ssd_best_od_cars.pth | 学習済みSSD(VGG16ベース)パラメータデータ(車、ナンバープレートを学習済) |
+| weights/vgg16-ssd_best_od_cars_classes.txt | vgg16-ssd_best_od_cars.pthで学習したクラス名 |
+| weights/mb2-ssd_best_od_cars.pth | 学習済みSSD(mobilenet-v2-liteベース)パラメータデータ(車、ナンバープレートを学習済) |
+| weights/mb2-ssd_best_od_cars_classes.txt | mb2-ssd_best_od_cars.pthで学習したクラス名 |
 | python_version.txt | 動作確認したpythonバージョン |
 | python_module_version.txt | 動作確認したpythonモジュールのバージョン |
 
-utils以下のソースは、以下掲載ソースをベースに、上述のpythonバージョンで動作するよう一部修正したものです。
+utils、vision以下のSSDソースは、以下掲載ソースをベースに、上述のpythonバージョンで動作するよう一部修正したものです。
+- utils  (VGG16ベースSSD)
+  - https://github.com/hituji1012/od_test (Copyright (c) 2021 hituji1012)
+- vision (mobilenet-v2-liteベースSSD)
+  - https://github.com/qfgaohao/pytorch-ssd (Copyright (c) 2019 Hao Gao)
 
-https://github.com/hituji1012/od_test
 
-参考までに、ソースのクラス図です（主要クラスのみ。Debugクラス等は省略）。
+参考までに、ソースのクラス図です（主要クラスのみ。Debugクラス等は省略。VGG16ベースSSD）。
 ![クラス図](./fig/soft_structure.png)
 
 ## 検知（推論）実行方法
@@ -48,15 +54,49 @@ python predict_ssd.py [動画(mp4) or 画像ファイルパス]
 
 異なる解像度の画像や、検出対象がいそうな領域が違う場合は、以下の検出範囲を適宜編集してご利用ください。現状、境界値チェックを入れれておらず、はみ出すと落ちてしまうので、ご注意ください。
 
-```python
-# predict_ssd.py抜粋
+また、検知に使うSSDモデルをVGGベースにする場合は、以下ソースでコメントアウトされている「(SSDモデル:VGGベース)ネットワーク種別/パラメータ/バッチ処理数」の3行を有効化（「(SSDモデル:mobilenetベース)...」はコメントアウト）します。
 
-# 検出範囲
-#   (1280x720を)300x300/350x350に切り出し
-img_procs = [ImageProc(180, 250, 530, 600), 
-             ImageProc(480, 200, 780, 500), 
-             ImageProc(730, 200, 1030, 500), 
-             ImageProc(930, 250, 1280, 600)] 
+```python
+# predict_ssd.py抜粋（cfg）
+
+cfg = {
+    # 動画再生fps (負値＝入力動画のfpsそのまま)
+    "play_fps"     : -1.0,
+
+    # 検出範囲(1280x720、真ん中or右車線走行シーン、駐車場シーン用)
+    "img_procs"    : [ImageProc(0, 250, 350, 600), 
+                      ImageProc(250, 200, 550, 500), 
+                      ImageProc(480, 200, 780, 500), 
+                      ImageProc(730, 200, 1030, 500), 
+                      ImageProc(930, 250, 1280, 600)],
+
+    # 検出範囲(1280x720、左車線走行シーン用)
+    # "img_procs"    : [ImageProc(480, 200, 780, 500), 
+    #                   ImageProc(730, 200, 1030, 500), 
+    #                   ImageProc(930, 250, 1280, 600)], 
+
+    # 入力画像全域を検出範囲にする場合は以下を有効化
+    # "img_procs"    : [ImageProc()],
+
+    # (SSDモデル:VGGベース)ネットワーク種別/パラメータ/バッチ処理数(※)
+    #   (※) バッチ処理数 ＝検出範囲数 x フレーム数
+    # "ssd_model_net_type"     : "vgg16-ssd",
+    # "ssd_model_weight_fpath" : "./weights/vgg16-ssd_best_od_cars.pth", 
+    # "ssd_model_num_batch" : 32,
+
+    # (SSDモデル:mobilenetベース)ネットワーク種別/パラメータ/バッチ処理数
+    "ssd_model_net_type"     : "mb2-ssd",
+    "ssd_model_weight_fpath" : "./weights/mb2-ssd_best_od_cars.pth", 
+    "ssd_model_num_batch" : 64,
+
+    # (SSDモデル) 信頼度confの足切り閾値
+    "ssd_model_conf_lower_th" : 0.5,
+
+    # (SSDモデル) 重複枠削除する重なり率(iou)閾値
+    "ssd_model_iou_th" : 0.5,
+
+}
+
 ```
 
 なお、学習済みSSD重みデータ（ssd_best_od_cars.pth）は、車を検出対象に入れているものの、側面は意図的に外してます（※）。そのため、真横の車は検出できないことがあるので、ご了承ください。
@@ -67,14 +107,17 @@ img_procs = [ImageProc(180, 250, 530, 600),
 
 以下を実行します。
 
-1. VGG16の学習済み重みをダウンロード
+1. 学習済みパラメータをダウンロード
 1. 学習データ作成（アノテーション）
 1. 学習実行
 
-### 1. VGG16の学習済み重みをダウンロード
+### 1. 学習済みパラメータをダウンロード
 
-以下から、vgg16_reducedfc.pthファイルをダウンロードし、weightsディレクトリに置いてください。
-https://s3.amazonaws.com/amdegroot-models/vgg16_reducedfc.pth
+以下から、``` vgg16_reducedfc.pth ``` (VGG16) or ``` mb2-imagenet-71_8.pth ``` (mobilenet-v2-lite) をダウンロードし、weightsディレクトリに置いてください。
+- ``` vgg16_reducedfc.pth ```
+  - https://s3.amazonaws.com/amdegroot-models/vgg16_reducedfc.pth
+- ``` mb2-imagenet-71_8.pth ```
+  - https://drive.google.com/drive/folders/1pKn-RifvJGWiOx0ZCRLtCXM5GT5lAluu
 
 ### 2. 学習データ作成（アノテーション）
 
@@ -117,25 +160,36 @@ train_ssd.pyの以下を編集します。
 検出対象に合わせて編集が必須なのは上２つ（「学習データを置いたディレクトリパス」「学習クラス名」）で、あとは（おそらく）そのままでも使えるかと思います。
 
 ```python
-# train_ssd.py抜粋
+# train_ssd.py抜粋（cfg）
 
-# 学習データを置いたディレクトリパス
-data_path    = "./data/od_cars"
+cfg = {
+    # 学習データを置いたディレクトリ
+    "train_data_path"    : "./data/od_cars",
 
-# 学習クラス名
-voc_classes  = ["car","number"]
+    # 学習クラス名
+    "train_voc_classes"  : ["car","number"],
 
-# SSDモデルで重みを更新しないレイヤー（入力層～freeze_layerまでの重みは更新しない）
-freeze_layer = 5
+    # 検証用画像の割合（全体のtest_rateを検証用画像にする）
+    "train_data_test_rate" : 0.1,
 
-# epoch数（引数指定なしの場合のDefault値）
-num_epochs = 500
+    # epoch数（引数指定なしの場合のDefault値）
+    "train_num_epoch" : 500,
 
-# バッチサイズ
-batch_size = 16
+    # バッチ処理数（＝検出範囲数 x フレーム数）
+    "train_batch_size" : 16,
 
-# 検証用画像の割合（全体のtest_rateを検証用画像にする）
-test_rate  = 0.1
+    # (SSDモデル)ネットワーク種別/ベースnet初期パラメータ/freezeレイヤー(※)
+    #    (※) 入力層～freeze_layer層までの重みは更新しない
+    # "ssd_model_net_type"          : "vgg16-ssd",
+    # "ssd_model_init_weight_fpath" : "./weights/vgg16_reducedfc.pth", 
+    # "ssd_model_freeze_layer"      : 5,
+
+    # (SSDモデル)ネットワーク種別/ベースnet初期パラメータ
+    "ssd_model_net_type"          : "mb2-ssd",
+    "ssd_model_init_weight_fpath" : "./weights/mb2-imagenet-71_8.pth", 
+    "ssd_model_freeze_layer"      : 0,
+}
+
 ```
 
 編集後は、ターミナルで以下を実行します。
@@ -184,7 +238,7 @@ python app_carnumber_auto_blur.py
 アプリのconfigは、```app_carnumber_auto_blur.py```の末尾付近にある以下で設定します。動画に合わせて調整が必要となる（かもしれない）のは「検出範囲」で、あとは（おそらく）そのままでも動作可能かと思います。
 
 ```python
-# app_carnumber_auto_blur.py抜粋
+# app_carnumber_auto_blur.py抜粋（cfg）
 
 cfg = {
     # 動画再生fps (負値＝入力動画のfpsそのまま)
@@ -226,8 +280,16 @@ cfg = {
     # ナンバープレートが車に所有されているかどうかの判定閾値
     "own_car_rate_th" : 0.5,
 
-    # (SSDモデル)パラメータ
-    "ssd_model_weight_fpath" : "./weights/ssd_best_od_cars.pth", 
+    # (SSDモデル)ネットワーク種別/パラメータ/バッチ処理数(※)
+    #   (※) バッチ処理数 ＝検出範囲数 x フレーム数
+    # "ssd_model_net_type"     : "vgg16-ssd",
+    # "ssd_model_weight_fpath" : "./weights/vgg16-ssd_best_od_cars.pth", 
+    # "ssd_model_num_batch" : 32,
+
+    # (SSDモデル)ネットワーク種別/パラメータ/バッチ処理数
+    "ssd_model_net_type"     : "mb2-ssd",
+    "ssd_model_weight_fpath" : "./weights/mb2-ssd_best_od_cars.pth", 
+    "ssd_model_num_batch" : 64,
 
     # (SSDモデル) 信頼度confの足切り閾値
     "ssd_model_conf_lower_th" : 0.5,
@@ -235,8 +297,6 @@ cfg = {
     # (SSDモデル) 重複枠削除する重なり率(iou)閾値
     # "ssd_model_iou_th" : 0.5,
     "ssd_model_iou_th" : 0.4,
-
-    # (SSDモデル) バッチ処理数（＝検出範囲数 x フレーム数）
-    "ssd_model_num_batch" : 32,
 }
+
 ```
