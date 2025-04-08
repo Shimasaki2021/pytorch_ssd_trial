@@ -15,7 +15,9 @@ from tqdm import tqdm
 import torch
 import torchvision
 
-from common_ssd import ImageProc, MovieLoader, SSDModel, DetResult, AnnoData, DrawPen, Logger, makeVocClassesTxtFpath
+from common_ssd import ImageProc, MovieLoader
+from common_ssd import SSDModel, DetResult, AnnoData, CalcMAP
+from common_ssd import DrawPen, Logger, makeVocClassesTxtFpath
 
 from vision.ssd.mobilenet_v2_ssd_lite import create_mobilenetv2_ssd_lite, create_mobilenetv2_ssd_lite_predictor
 
@@ -165,9 +167,9 @@ class LogEvalAnno(Logger):
         super().__init__(is_out)
         return
     
-    def openLogFile(self, dev_name:str, output_imgdir_name:str):
+    def openLogFile(self, dev_name:str, net_type:str, output_imgdir_name:str):
         if self.is_out_ == True:
-            super().openLogFile(dev_name, output_imgdir_name, "eval_anno.csv", "w")
+            super().openLogFile(dev_name, net_type, output_imgdir_name, "eval_anno.csv", "w")
 
             if self.log_fp_ is not None:
                 self.log_fp_.write("img,")
@@ -315,6 +317,8 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
     val_file_all  = [os.path.split(f)[1].split(".")[0] for f in glob.glob(f"{img_dir}/*.xml")]
     val_file_list = [f for f in val_file_all if parse_anno.isExistObject(f"{img_dir}/{f}.xml") == True]
 
+    calc_map:CalcMAP = None
+
     is_exist_anno = False
     val_img_list  = []
     val_anno_list = []
@@ -326,7 +330,9 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
         val_anno_list = [f"{img_dir}/{f}.xml" for f in val_file_list]
 
         log_eval_anno = LogEvalAnno(True)
-        log_eval_anno.openLogFile(ssd_model.device_.type, output_imgdir_name)
+        log_eval_anno.openLogFile(ssd_model.device_.type, ssd_model.net_type_, output_imgdir_name)
+
+        calc_map = CalcMAP(val_img_list, ssd_model.voc_classes_, iou_thres=0.5)
 
     else:
         # [画像データのみの場合] 
@@ -355,7 +361,9 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
                 img_h, img_w, _ = img_org.shape
 
                 anno_data = ImageProc.getAnnoData(val_anno_list[idx], parse_anno, ssd_model.voc_classes_, img_w, img_h)
-                img_org = ImageProc.drawAnnoData(img_org, anno_data, DrawPen((128,255,128), 1, 0.4))
+                img_org   = ImageProc.drawAnnoData(img_org, anno_data, DrawPen((128,255,128), 1, 0.4))
+
+                calc_map.add(img_fpath, det_results[0], anno_data)
 
                 for anno_cur in anno_data:
                     # アノテーションデータの評価結果をログ出力
@@ -376,6 +384,16 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
             break        
+
+    if is_exist_anno == True:
+        # mAP計算
+        mAP, per_class_ap = calc_map()
+
+        # print(f"mAP={mAP}, per_class_ap={per_class_ap}")
+        log_eval_anno.log_fp_.write(f"\nMean Average Precision =,{mAP}\n")
+        log_eval_anno.log_fp_.write(f"== Average Precision per class ==\n")
+        for cls_name, ap_val in per_class_ap.items():
+            log_eval_anno.log_fp_.write(f"{cls_name},{ap_val}\n")
 
     log_eval_anno.closeLogFile()
 

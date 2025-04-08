@@ -449,6 +449,126 @@ class VocDataSetMng:
         return (num_obj, w_ave, h_ave)
 
 
+def iou(box1, box2):
+    """IoU計算"""
+    x1 = max(box1[0], box2[0])
+    y1 = max(box1[1], box2[1])
+    x2 = min(box1[2], box2[2])
+    y2 = min(box1[3], box2[3])
+
+    inter_area = max(0, x2 - x1) * max(0, y2 - y1)
+    box1_area = (box1[2] - box1[0]) * (box1[3] - box1[1])
+    box2_area = (box2[2] - box2[0]) * (box2[3] - box2[1])
+
+    union_area = box1_area + box2_area - inter_area
+    return inter_area / union_area if union_area != 0 else 0
+
+def compute_ap(recalls, precisions):
+    """11-point interpolationのAP計算（Pascal VOC方式）"""
+    recalls = np.concatenate(([0.], recalls, [1.]))
+    precisions = np.concatenate(([0.], precisions, [0.]))
+
+    for i in range(len(precisions) - 1, 0, -1):
+        precisions[i - 1] = np.maximum(precisions[i - 1], precisions[i])
+
+    indices = np.where(recalls[1:] != recalls[:-1])[0]
+    ap = np.sum((recalls[indices + 1] - recalls[indices]) * precisions[indices + 1])
+    return ap
+
+def evaluate_map(predictions:Dict[str,List], ground_truths:Dict[str,List], class_names:List[str], iou_threshold=0.5) -> Tuple[float, List[float]]:
+    """
+    mAP算出
+    :param predictions: dict[image_id] -> list of (bbox, score, class_id)
+    :param ground_truths: dict[image_id] -> list of (bbox, class_id)
+    :return: mAP(float), per_class_AP(list)
+    """
+    aps = []
+    for class_name in class_names:
+        true_positives = []
+        scores = []
+        total_gts = 0
+        gt_used = {}
+
+        detections = []
+        for image_id in predictions:
+            preds = [p for p in predictions[image_id] if p[2] == class_name]
+            gts = [g for g in ground_truths.get(image_id, []) if g[1] == class_name]
+            total_gts += len(gts)
+            gt_used[image_id] = [False] * len(gts)
+
+            for p in preds:
+                detections.append((image_id, p[0], p[1]))  # (image_id, bbox, score)
+
+        detections.sort(key=lambda x: -x[2])  # スコア順
+
+        for image_id, pred_box, score in detections:
+            gts = [g for g in ground_truths.get(image_id, []) if g[1] == class_name]
+            ious = [iou(pred_box, gt[0]) for gt in gts]
+
+            max_iou = 0
+            max_index = -1
+            for idx, iou_val in enumerate(ious):
+                if iou_val > max_iou:
+                    max_iou = iou_val
+                    max_index = idx
+
+            if max_iou >= iou_threshold and not gt_used[image_id][max_index]:
+                true_positives.append(1)
+                gt_used[image_id][max_index] = True
+            else:
+                true_positives.append(0)
+            scores.append(score)
+
+        if total_gts == 0:
+            aps.append(0)
+            continue
+
+        tp = np.array(true_positives)
+        fp = 1 - tp
+        tp_cumsum = np.cumsum(tp)
+        fp_cumsum = np.cumsum(fp)
+
+        recalls = tp_cumsum / total_gts
+        precisions = tp_cumsum / (tp_cumsum + fp_cumsum)
+        ap = compute_ap(recalls, precisions)
+        aps.append(ap)
+
+    mAP = np.mean(aps)
+    return mAP, aps
+
+# Mean Average Precision算出
+class CalcMAP:
+    def __init__(self, img_list:List[str], voc_classes:List[str], iou_thres:float):
+        img_fnames = [os.path.splitext(os.path.basename(img_fpath))[0] 
+                      for img_fpath in img_list]
+        
+        self.predictions_   = {img:list() for img in img_fnames}
+        self.ground_truths_ = {img:list() for img in img_fnames}
+
+        self.voc_classes_   = voc_classes
+        self.iou_thres_     = iou_thres
+        return
+    
+    def add(self, img_fpath:str, det_results:List[DetResult], anno_data:List[AnnoData]):
+        img_fname = os.path.splitext(os.path.basename(img_fpath))[0]
+
+        det_results_cp = copy.deepcopy(det_results)
+        anno_data_cp   = copy.deepcopy(anno_data)
+
+        for det_result in det_results_cp:
+            self.predictions_[img_fname].append((det_result.bbox_, det_result.score_, det_result.class_name_))
+
+        for gt in anno_data_cp:
+            self.ground_truths_[img_fname].append((gt.bbox_, gt.class_name_))
+        return
+
+    def __call__(self) -> Tuple[float, Dict[str,float]]:
+        (mAP, per_class_ap) = evaluate_map(self.predictions_, self.ground_truths_,  self.voc_classes_, self.iou_thres_)
+
+        per_class_ap_dict = {cls_name:ap_val for cls_name,ap_val in zip(self.voc_classes_, per_class_ap)}
+        return (mAP, per_class_ap_dict)
+
+
 class SSDModel:
 
     def __init__(self, device:torch.device, voc_classes:List[str], net_type:str):
