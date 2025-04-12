@@ -299,7 +299,7 @@ def main_det_img(img_procs:List[ImageProc], ssd_model:SSDModelDetector, img_fpat
 
     return
 
-def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
+def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float, overlap:float, eval_iou_th:float):
     # 検出領域は、画像全域のみサポート
     img_proc = ImageProc()
 
@@ -332,7 +332,7 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
         log_eval_anno = LogEvalAnno(True)
         log_eval_anno.openLogFile(ssd_model.device_.type, ssd_model.net_type_, output_imgdir_name)
 
-        calc_map = CalcMAP(val_img_list, ssd_model.voc_classes_, iou_thres=0.5)
+        calc_map = CalcMAP(val_img_list, ssd_model.voc_classes_, iou_thres=eval_iou_th)
 
     else:
         # [画像データのみの場合] 
@@ -351,7 +351,7 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
             print(f"[{idx}/{num_img}] proc: {img_fpath}...", )
 
             # SSD物体検出
-            det_results = ssd_model.predict([img_proc], [img_org], conf)
+            det_results = ssd_model.predict([img_proc], [img_org], conf, overlap)
 
             # 検出結果描画
             img_org = ImageProc.drawResultDet(img_org, det_results[0], DrawPen((128,255,255), 1, 0.4))
@@ -367,7 +367,7 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
 
                 for anno_cur in anno_data:
                     # アノテーションデータの評価結果をログ出力
-                    (pos_det, jaccard_val) = anno_cur.extractPositiveDetResult(det_results[0])
+                    (pos_det, jaccard_val) = anno_cur.extractPositiveDetResult(det_results[0], eval_iou_th)
                     log_eval_anno.writeLog(img_fpath, anno_cur, pos_det, jaccard_val)
 
             # 保存
@@ -389,11 +389,15 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float):
         # mAP計算
         mAP, per_class_ap = calc_map()
 
-        # print(f"mAP={mAP}, per_class_ap={per_class_ap}")
-        log_eval_anno.log_fp_.write(f"\nMean Average Precision =,{mAP}\n")
-        log_eval_anno.log_fp_.write(f"== Average Precision per class ==\n")
+        log_eval_anno.log_fp_.write(f"\n\nMean Average Precision({eval_iou_th}) =,{mAP}\n")
+        print(f"\nMean Average Precision({eval_iou_th}) = {mAP}\n")
+
+        log_eval_anno.log_fp_.write(f"== Average Precision({eval_iou_th}) per class ==\n")
+        print(f"== Average Precision({eval_iou_th}) per class ==")
+
         for cls_name, ap_val in per_class_ap.items():
             log_eval_anno.log_fp_.write(f"{cls_name},{ap_val}\n")
+            print(f"{cls_name}: {ap_val}")
 
     log_eval_anno.closeLogFile()
 
@@ -409,6 +413,7 @@ def main(media_fpath:str, cfg:Dict[str,Any]):
     num_batch:int             = cfg["ssd_model_num_batch"]
     conf:float                = cfg["ssd_model_conf_lower_th"]
     overlap:float             = cfg["ssd_model_iou_th"]
+    eval_iou_th:float         = cfg["ssd_model_eval_iou_th"]
 
     if (os.path.isfile(media_fpath) == False) and (os.path.isdir(media_fpath) == False):
         print("Error: ", media_fpath, " is nothing.")
@@ -432,7 +437,7 @@ def main(media_fpath:str, cfg:Dict[str,Any]):
         
         elif os.path.isdir(media_fpath) == True:
             # ディレクトリ
-            main_play_imageset(ssd_model, media_fpath, conf)
+            main_play_imageset(ssd_model, media_fpath, conf, overlap, eval_iou_th)
 
         else:
             print("No support ext [", media_fname, "]")
@@ -476,7 +481,9 @@ if __name__ == "__main__":
         "ssd_model_conf_lower_th" : 0.5,
 
         # (SSDモデル) 重複枠削除する重なり率(iou)閾値
-        "ssd_model_iou_th" : 0.5,
+        "ssd_model_iou_th" : 0.4,
+        # (SSDモデル(評価用)) 正解枠との重なり率(iou)閾値
+        "ssd_model_eval_iou_th" : 0.4,
 
     }
 
