@@ -1,0 +1,32 @@
+@startuml soft_structure
+
+hide empty members
+allowmixing
+
+title ソフト構造(クラス図(mobilenet-ssd))
+
+
+package vision {
+    package "nn/mobilenet_v2.py" as nn_mobilenet_v2_py {
+        class MobileNetV2
+    }
+    package "ssd/ssd.py" as ssd_ssd_py {
+        class SSD
+    }
+    package "ssd/predictor.py" as ssd_predictor_py {
+        class Predictor
+    }
+    package "ssd/mobilenet_v2_ssd_lite.py" as ssd_mobilenet_v2_ssd_lite_py {
+        component create_mobilenetv2_ssd_lite
+        component create_mobilenetv2_ssd_lite_predictor
+    }
+
+    SSD *- MobileNetV2
+    Predictor *- SSD
+
+    create_mobilenetv2_ssd_lite -u- SSD : 作成 >
+    create_mobilenetv2_ssd_lite_predictor -u- Predictor : 作成 >
+}
+
+
+@enduml

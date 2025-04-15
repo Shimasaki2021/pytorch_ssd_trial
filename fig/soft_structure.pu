@@ -17,7 +17,7 @@ class AdamW << optimizer >>
 
 package utils {
     package "ssd_model.py" as ssd_model {
-        class SSD {
+        class SSD_vgg {
             vgg
             extras
             loc
@@ -60,15 +60,15 @@ SSDModel <|- SSDModelDetector
 
 SSDModelTrainer - DataLoader : 画像、正解データ取得 >
 ' SSD -- vgg16_reducefdc : load >
-SSDModelTrainer - SSD : 順伝播\n(forward) >
+' SSDModelTrainer - SSD_vgg : 順伝播\n(forward) >
 SSDModelTrainer - MultiBoxLoss : 損失計算、逆伝播\n(backward) >
-SSDModelTrainer -d- AdamW : パラメータ更新 >
-MultiBoxLoss .. SSD : 勾配算出? >
-AdamW .. SSD : パラメータ更新? >
+SSDModelTrainer -l- AdamW : パラメータ更新 >
+' MultiBoxLoss .. SSD_vgg : 勾配算出? >
+' AdamW .. SSD_vgg : パラメータ更新? >
 
-SSDModelDetector - ImageProc : 検出範囲切り出し、座標変換 >
 SSDModelDetector -- DataTransform : 画像前処理 >
-SSDModelDetector - SSD : 順伝播\n(forward) >
+SSDModelDetector - ImageProc : 検出範囲切り出し、座標変換 >
+' SSDModelDetector - SSD_vgg : 順伝播\n(forward) >
 
 
 VocDataSetMng *-- VOCDataset

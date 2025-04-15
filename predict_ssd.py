@@ -32,10 +32,12 @@ class SSDModelDetector(SSDModel):
 
         # SSDネットワークモデル
         if self.net_type_ == "mb2-ssd":
+            # mobilenet-v2-liteベースSSD
             net_body  = create_mobilenetv2_ssd_lite(self.num_classes_, is_test=True)
             net_body.load_state_dict(net_weights)
             self.net_ = create_mobilenetv2_ssd_lite_predictor(net_body, candidate_size=200, device=device)
         else:
+            # VGGベースSSD
             self.net_ = SSD_vgg(phase="inference", cfg=self.ssd_vgg_cfg_)
             self.net_.load_state_dict(net_weights)
             self.net_.eval()
@@ -208,6 +210,10 @@ def main_play_movie(img_procs:List[ImageProc], num_batch:int, ssd_model:SSDModel
     output_imgdir_name = os.path.splitext(os.path.basename(movie_fpath))[0]
     output_imgdir_path = Logger.createOutputDir(ssd_model.device_.type, ssd_model.net_type_, output_imgdir_name)
 
+    logger = Logger(True)
+    logger.openLogFile(ssd_model.device_.type, ssd_model.net_type_, output_imgdir_name, "log_predict.csv", "w")
+    logger.log_fp_.write(f"frame,fps\n")
+
     # 入力動画読み込み
     movie_loader = MovieLoader(movie_fpath, play_fps, num_batch_frame)
     num_frame    = movie_loader.getNumFrame()
@@ -224,7 +230,7 @@ def main_play_movie(img_procs:List[ImageProc], num_batch:int, ssd_model:SSDModel
                 det_results = ssd_model.predict(img_procs, batch_imgs, conf, overlap)
                 time_e = time.perf_counter()
 
-                time_per_batch = (time_e - time_s) / len(batch_imgs)
+                time_per_frame = (time_e - time_s) / len(batch_imgs)
 
                 # フレーム毎の処理
                 for batch_frame_no, img_org, det_result in zip(batch_frame_nos, batch_imgs, det_results):
@@ -241,8 +247,10 @@ def main_play_movie(img_procs:List[ImageProc], num_batch:int, ssd_model:SSDModel
                     img_org = ImageProc.drawResultSummary(img_org, batch_frame_no, num_frame, 
                                                         ssd_model.device_.type, 
                                                         ssd_model.net_type_,
-                                                        time_per_batch,
+                                                        time_per_frame,
                                                         DrawPen((255,255,255), 2, 0.6))
+                    
+                    logger.log_fp_.write(f"F{batch_frame_no},{(1.0 / time_per_frame):.1f}\n")
 
                     # 保存
                     frame_img_fpath = f"{output_imgdir_path}/F{batch_frame_no:05}.jpg" 
@@ -255,6 +263,7 @@ def main_play_movie(img_procs:List[ImageProc], num_batch:int, ssd_model:SSDModel
                     if key == ord("q"):
                         break
 
+    logger.closeLogFile()
     cv2.destroyAllWindows()
     print("output: ", output_imgdir_path)
 

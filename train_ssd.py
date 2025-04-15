@@ -136,8 +136,10 @@ class SSDModelTrainer(SSDModel):
 
         # SSDネットワークモデル
         if self.net_type_ == "mb2-ssd":
+            # mobilenet-v2-liteベースSSD
             self.net_ = self.createSSDmb2(self.num_classes_, weight_fpath, freeze_layer)
         else:
+            # VGGベースSSD
             self.net_ = self.createSSDvgg(weight_fpath, self.ssd_vgg_cfg_, freeze_layer)
 
         self.net_.to(device)
@@ -154,7 +156,22 @@ class SSDModelTrainer(SSDModel):
     
     @staticmethod
     def createSSDvgg(weight_fpath:str, cfg_vgg:Dict[str,Any], freeze_layer:int) -> SSD_vgg:
+        """
+        VGG16ベースSSD作成＆パラメータ初期値設定
 
+        Parameters
+        ----------
+        weight_fpath:  
+            ベースネット(VGG16)パラメータファイル
+        cfg_vgg: 
+            SSD用config
+        freeze_layer: 
+            パラメータ更新を止めるレイヤ
+
+        Returns
+        -------
+        net : VGG16ベースSSD
+        """
         # SSD作成
         net = SSD_vgg(phase="train", cfg=cfg_vgg)
 
@@ -176,7 +193,22 @@ class SSDModelTrainer(SSDModel):
 
     @staticmethod
     def createSSDmb2(num_classes:int, weight_fpath:str, freeze_layer:int) -> SSD_mb2:
+        """
+        mobilenet-v2-liteベースSSD作成＆パラメータ初期値設定
 
+        Parameters
+        ----------
+        num_classes:  
+            クラス数
+        weight_fpath:  
+            ベースネット(mobilenet-v2-lite)パラメータファイル
+        freeze_layer: 
+            パラメータ更新を止めるレイヤ
+
+        Returns
+        -------
+        net : mobilenet-v2-liteベースSSD
+        """
         # SSD作成
         net = create_mobilenetv2_ssd_lite(num_classes)
 
