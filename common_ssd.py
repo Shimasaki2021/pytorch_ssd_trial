@@ -96,8 +96,6 @@ class ImageProc:
         self.img_w_ = 0
         self.img_h_ = 0
 
-        self.draw_col_darea_  = (0,128,0)
-
         self.is_no_proc_ = False
         if self.darea_lu_x_ == 0 and \
             self.darea_lu_y_ == 0 and \
@@ -133,16 +131,29 @@ class ImageProc:
         bb_i = bb_f.astype(np.int64)
         return bb_i
 
-    def drawDetArea(self, img_org:np.ndarray, pen:DrawPen) -> np.ndarray:
+    def drawDetArea(self, img_org:np.ndarray, pen:DrawPen, area_name:str="det area") -> np.ndarray:
 
         if self.is_no_proc_ == False:
             # 検出範囲を描画
-            cv2.rectangle(img_org, (self.darea_lu_x_, self.darea_lu_y_), 
-                                (self.darea_rb_x_, self.darea_rb_y_), 
-                                self.draw_col_darea_, pen.thick_)
-            ImageProc.drawText(img_org, "det area", 
-                                        (self.darea_lu_x_, self.darea_rb_y_+15), 
-                                        pen.char_size_, self.draw_col_darea_, pen.thick_, False)
+            cv2.rectangle(img_org, 
+                          (self.darea_lu_x_, self.darea_lu_y_), 
+                          (self.darea_rb_x_, self.darea_rb_y_), 
+                           pen.col_, pen.thick_)
+            ImageProc.drawText(img_org, area_name, 
+                               (self.darea_lu_x_, self.darea_rb_y_+15), 
+                               pen.char_size_, pen.col_, pen.thick_, False)
+        return img_org
+
+    def eraseRectArea(self, img_org:np.ndarray) -> np.ndarray:
+        # 固定領域を消去
+        if self.is_no_proc_ == False:
+            img_mask = cv2.cvtColor(img_org, cv2.COLOR_BGR2GRAY)
+            img_mask[:,:] = 0
+            img_mask[self.darea_lu_y_: self.darea_rb_y_, self.darea_lu_x_: self.darea_rb_x_] = 255
+            # cv2.imwrite("mask_img.png", img_mask)
+
+            img_org = cv2.inpaint(img_org, img_mask, 3, cv2.INPAINT_TELEA)
+
         return img_org
 
     def __str__(self) -> str:
@@ -248,6 +259,7 @@ class ImageProc:
                 img_org[det.bbox_[1]: det.bbox_[3], det.bbox_[0]: det.bbox_[2]] = s_roi
 
         return img_org
+    
 
 class MovieLoader:
 

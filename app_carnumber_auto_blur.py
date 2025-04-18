@@ -378,18 +378,20 @@ class DetNumberPlateMng:
 
 def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,Any]):
 
-    play_fps:float            = cfg["play_fps"]
-    img_procs:List[ImageProc] = cfg["img_procs"]
-    conf:float                = cfg["ssd_model_conf_lower_th"]
-    overlap:float             = cfg["ssd_model_iou_th"]
-    blur_kernel_size:int      = cfg["blur_kernel_size"]
-    is_blur:bool              = cfg["is_blur"]
-    is_debug:bool             = cfg["is_debug"]
-    is_output_movie:bool      = cfg["is_output_movie"]
-    is_output_image:bool      = cfg["is_output_image"]
-    same_cur_iou_th:float     = cfg["same_cur_iou_th"]
-    own_car_rate_th:float     = cfg["own_car_rate_th"]
-    num_batch:int             = cfg["ssd_model_num_batch"]
+    play_fps:float                  = cfg["play_fps"]
+    img_procs:List[ImageProc]       = cfg["img_procs"]
+    img_erase_rects:List[ImageProc] = cfg["img_erase"]
+
+    conf:float            = cfg["ssd_model_conf_lower_th"]
+    overlap:float         = cfg["ssd_model_iou_th"]
+    blur_kernel_size:int  = cfg["blur_kernel_size"]
+    is_blur:bool          = cfg["is_blur"]
+    is_debug:bool         = cfg["is_debug"]
+    is_output_movie:bool  = cfg["is_output_movie"]
+    is_output_image:bool  = cfg["is_output_image"]
+    same_cur_iou_th:float = cfg["same_cur_iou_th"]
+    own_car_rate_th:float = cfg["own_car_rate_th"]
+    num_batch:int         = cfg["ssd_model_num_batch"]
 
     num_batch_frame = int(num_batch / len(img_procs))
     if num_batch_frame < 1:
@@ -454,9 +456,13 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
                     # フィルタリング後の検出結果（ナンバープレート）を取得
                     det_numbers = det_numbers_mng.getNumberPlates()
 
-                    # ナンバープレート検出位置にぼかしを入れる
                     if is_blur == True:
+                        # ナンバープレート検出位置にぼかしを入れる
                         img_org = ImageProc.blurDetObject(img_org, det_numbers, blur_kernel_size)
+
+                        # 固定領域を消去
+                        for img_erase_rect in img_erase_rects:
+                            img_org = img_erase_rect.eraseRectArea(img_org)
 
                     # Debug表示
                     if is_debug == True:
@@ -466,6 +472,9 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
                         # 検出範囲を描画
                         for img_proc in img_procs:
                             img_org = img_proc.drawDetArea(img_org, DrawPen((0,128,0), 1, 0.4))
+                        # 消去範囲を描画
+                        for img_erase_rect in img_erase_rects:
+                            img_org = img_erase_rect.drawDetArea(img_org, DrawPen((0,128,128), 1, 0.4), "erase area")
 
                         # 検出結果を描画
                         img_org = ImageProc.drawResultDet(img_org, det_result,  DrawPen((255,255,255), 1, 0.4))
@@ -490,7 +499,8 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
                     # 表示
                     cv2.imshow(output_imgdir_name, img_org)
 
-                    key = cv2.waitKey(int(1000.0 / play_fps)) & 0xFF
+                    # key = cv2.waitKey(int(1000.0 / play_fps)) & 0xFF
+                    key = cv2.waitKey(int(500.0 / play_fps)) & 0xFF
                     if key == ord("q"):
                         break
 
@@ -548,6 +558,10 @@ if __name__ == "__main__":
         # "img_procs"    : [ImageProc(480, 200, 780, 500), 
         #                   ImageProc(730, 200, 1030, 500), 
         #                   ImageProc(930, 250, 1280, 600)], 
+
+        # 固定の矩形領域を消去
+        # "img_erase"    : [ImageProc(367, 33, 367+257, 33+100)],
+        "img_erase"    : [ImageProc()], # 消去なし
 
         # ぼかし強度(カーネルサイズ)
         "blur_kernel_size" : 10,
