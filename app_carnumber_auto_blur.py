@@ -462,7 +462,7 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
 
                         # 固定領域を消去
                         for img_erase_rect in img_erase_rects:
-                            img_org = img_erase_rect.eraseRectArea(img_org)
+                            img_org = img_erase_rect.eraseRectArea(img_org, blur_kernel_size * 2)
 
                     # Debug表示
                     if is_debug == True:
@@ -500,7 +500,7 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
                     cv2.imshow(output_imgdir_name, img_org)
 
                     # key = cv2.waitKey(int(1000.0 / play_fps)) & 0xFF
-                    key = cv2.waitKey(int(500.0 / play_fps)) & 0xFF
+                    key = cv2.waitKey(int(100.0 / play_fps)) & 0xFF
                     if key == ord("q"):
                         break
 
