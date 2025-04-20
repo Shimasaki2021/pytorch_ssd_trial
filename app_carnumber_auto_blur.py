@@ -462,7 +462,7 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
 
                         # 固定領域を消去
                         for img_erase_rect in img_erase_rects:
-                            img_org = img_erase_rect.eraseRectArea(img_org, blur_kernel_size * 2)
+                            img_org = img_erase_rect.eraseRectArea(img_org, True)
 
                     # Debug表示
                     if is_debug == True:
@@ -560,8 +560,8 @@ if __name__ == "__main__":
         #                   ImageProc(930, 250, 1280, 600)], 
 
         # 固定の矩形領域を消去
-        # "img_erase"    : [ImageProc(367, 33, 367+257, 33+100)],
-        "img_erase"    : [ImageProc()], # 消去なし
+        "img_erase"    : [ImageProc(367, 33, 367+257, 33+100)],
+        # "img_erase"    : [ImageProc()], # 消去なし
 
         # ぼかし強度(カーネルサイズ)
         "blur_kernel_size" : 10,

@@ -144,7 +144,7 @@ class ImageProc:
                                pen.char_size_, pen.col_, pen.thick_, False)
         return img_org
 
-    def eraseRectArea(self, img_org:np.ndarray, blur_kernel_size:int) -> np.ndarray:
+    def eraseRectArea(self, img_org:np.ndarray, is_blur:bool) -> np.ndarray:
         # 固定領域を消去
         if self.is_no_proc_ == False:
             img_mask = cv2.cvtColor(img_org, cv2.COLOR_BGR2GRAY)
@@ -154,8 +154,12 @@ class ImageProc:
 
             img_org = cv2.inpaint(img_org, img_mask, 3, cv2.INPAINT_TELEA)
 
-            if blur_kernel_size > 0:
-                # 消去後、ぼかしを入れる（blur_kernel_size＝負の場合はぼかしなし）
+            if is_blur == True:
+                # 消去後、ぼかしを入れる
+                blur_kernel_size = int(min(self.darea_rb_y_ - self.darea_lu_y_, self.darea_rb_x_ - self.darea_lu_x_) / 4) 
+                if blur_kernel_size < 5:
+                    blur_kernel_size = 5
+
                 s_roi = img_org[self.darea_lu_y_: self.darea_rb_y_, self.darea_lu_x_: self.darea_rb_x_]
                 s_roi = cv2.blur(s_roi, (blur_kernel_size, blur_kernel_size))
                 img_org[self.darea_lu_y_: self.darea_rb_y_, self.darea_lu_x_: self.darea_rb_x_] = s_roi
