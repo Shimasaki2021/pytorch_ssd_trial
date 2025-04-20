@@ -560,8 +560,8 @@ if __name__ == "__main__":
         #                   ImageProc(930, 250, 1280, 600)], 
 
         # 固定の矩形領域を消去
-        "img_erase"    : [ImageProc(367, 33, 367+257, 33+100)],
-        # "img_erase"    : [ImageProc()], # 消去なし
+        # "img_erase"    : [ImageProc(367, 33, 367+257, 33+100)],
+        "img_erase"    : [ImageProc()], # 消去なし
 
         # ぼかし強度(カーネルサイズ)
         "blur_kernel_size" : 10,
