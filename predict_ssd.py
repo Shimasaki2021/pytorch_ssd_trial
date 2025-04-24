@@ -238,7 +238,7 @@ def main_play_movie(img_procs:List[ImageProc], num_batch:int, ssd_model:SSDModel
 
                     # 検出範囲描画
                     for img_proc in img_procs:
-                        img_org = img_proc.drawDetArea(img_org, DrawPen((255,255,255), 1, 0.4))
+                        img_org = img_proc.drawDetArea(img_org, DrawPen((0,128,0), 1, 0.4))
 
                     # 検出結果描画
                     img_org = ImageProc.drawResultDet(img_org, det_result, DrawPen((255,255,255), 1, 0.4))
@@ -259,7 +259,7 @@ def main_play_movie(img_procs:List[ImageProc], num_batch:int, ssd_model:SSDModel
                     # 表示
                     cv2.imshow(output_imgdir_name, img_org)
 
-                    key = cv2.waitKey(int(1000.0 / play_fps)) & 0xFF
+                    key = cv2.waitKey(int(100.0 / play_fps)) & 0xFF
                     if key == ord("q"):
                         break
 
@@ -286,7 +286,7 @@ def main_det_img(img_procs:List[ImageProc], ssd_model:SSDModelDetector, img_fpat
 
         # 検出範囲描画
         for img_proc in img_procs:
-            img_org = img_proc.drawDetArea(img_org, DrawPen((255,255,255), 1, 0.4))
+            img_org = img_proc.drawDetArea(img_org, DrawPen((0,128,0), 1, 0.4))
 
         # 検出結果描画
         img_org = ImageProc.drawResultDet(img_org, det_results[0], DrawPen((255,255,255), 1, 0.4))

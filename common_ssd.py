@@ -303,6 +303,10 @@ class MovieLoader:
         ret_batch_frame_nos:List[int]   = []
         ret_batch_imgs:List[np.ndarray] = []
 
+        # 動画末尾フレームまで再生していたらiteration終了
+        if self.cur_frame_no_ >= self.num_cap_frame_:
+            raise StopIteration()
+
         # フレーム読み込み
         self.cur_frame_no_ = int(self.cap_.get(cv2.CAP_PROP_POS_FRAMES)) 
         while (len(ret_batch_frame_nos) < self.num_batch_frame_) and (self.cur_frame_no_ < self.num_cap_frame_):
@@ -315,10 +319,6 @@ class MovieLoader:
                 ret_batch_imgs.append(copy.deepcopy(img_org))
 
             self.cur_frame_no_ = int(self.cap_.get(cv2.CAP_PROP_POS_FRAMES))
-
-        # 動画末尾フレームまで再生したらiteration終了
-        if self.cur_frame_no_ >= self.num_cap_frame_:
-            raise StopIteration()
 
         # 動画フレーム画像、フレーム番号を返す（バッチ処理分のリスト）
         return (ret_batch_frame_nos, ret_batch_imgs)
