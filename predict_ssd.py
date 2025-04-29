@@ -184,13 +184,13 @@ class SSDModelDetector(SSDModel):
     def predictDetail(self, det_results:List[List[DetResult]], imgs:List[np.ndarray], min_bbox_size:int, num_batch:int, target_class:str, conf=0.5, overlap=0.45) -> List[List[DetResult]]:
         """ 検知（推論）実行（検出結果の中を詳細検知）
 
-        - 検出結果の矩形内に対してSSDモデルの検知を再度実行
+        - 検出結果(target_classのみ)の矩形内に対してSSDモデルの検知を再度実行
 
         Args:
             det_results (List[List[DetResult]]) : 検出結果（複数） [img_num, obj_num, 検出結果]
             imgs (List[np.ndarray])             : 画像（複数） [img_num,h,w,ch(BGR)]
             min_bbox_size (int)                 : 矩形最小サイズ[px]
-            num_batch (int)                     : バッチ数
+            num_batch (int)                     : バッチ数（predict()実行時のバッチ数）
             target_class (str)                  : 検知再実行する検出結果クラス
             conf (float, optional)              : 信頼度conf下限閾値. Defaults to 0.5.
             overlap (float, optional)           : 重複有無の判定閾値(IoU). Defaults to 0.45.
@@ -217,10 +217,11 @@ class SSDModelDetector(SSDModel):
                             img_procs[img_no].append(copy.deepcopy(img_proc))
                             num_area += 1
                             if num_area >= num_batch:
+                                # num_batchを超えない数で詳細検出をかける
                                 break
                 else:
-                    continue
-                break
+                    continue # 内側ループが正常に抜けたときは、外側ループを続ける
+                break # 内側ループがbreakで抜けたときのみ、外側ループも抜ける
 
             # print(f"\nIn predictDetail(): img:{num_img}, area:{num_area}")
 
@@ -237,6 +238,7 @@ class SSDModelDetector(SSDModel):
                         imgs_trans.append(img_trans[:, :, (2, 1, 0)]) # [h,w,ch(BGR→RGB)]
                 
                 # GPU実行時に処理時間を安定化させるため、batch数を揃える
+                #   → 検出範囲数がnum_batchに達するまでdummy画像（黒画像）を加える
                 while len(imgs_trans) < num_batch:
                     imgs_trans.append(self.img_dummy_)
 
@@ -398,7 +400,6 @@ def main_play_movie(img_procs:List[ImageProc], num_batch:int, ssd_model:SSDModel
 
                 # 試作: 車の枠からナンバープレートを再検出
                 det_results = ssd_model.predictDetail(det_results, batch_imgs, (num_batch_frame * len(img_procs)), 100, "car", conf, overlap)
-                # det_results = ssd_model.predict(img_procs, batch_imgs, conf, overlap)
 
                 time_e = time.perf_counter()
 

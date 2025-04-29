@@ -476,6 +476,9 @@ def calcIndexesFromBatchIdx(img_procs:List[List[ImageProc]], batch_idx:int) -> T
                 area_idx = area_no
                 break
             batch_no += 1
+        else:
+            continue # 内側ループが正常に抜けたときは、外側ループを続ける
+        break # 内側ループがbreakで抜けたときのみ、外側ループも抜ける
 
     return (img_idx, area_idx)
 
