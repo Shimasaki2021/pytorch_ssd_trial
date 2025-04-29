@@ -55,6 +55,9 @@ class SSDModelDetector(SSDModel):
         # 前処理を行うクラス(DataTransform)のインスタンス作成
         self.transform_ = DataTransform(self.input_size_, self.color_mean_, self.color_std_)
 
+        # 入力画像dummy
+        self.img_dummy_ = np.zeros((self.input_size_, self.input_size_, 3), dtype=np.uint8) 
+
         # (torch.compile) Windows+anaconda環境では使用不可。WSL2+Ubuntu環境では使用可。
         #   GPU=GTX1660SUPERでは、以下Warningが出るが一応実行は可能。効果はわずか（1分の動画の処理時間が、12分7秒 → 11分57秒）
         #     W0316 07:20:49.853000 15169 torch/_inductor/utils.py:1137] [0/0_1] Not enough SMs to use max_autotune_gemm mode
@@ -119,7 +122,7 @@ class SSDModelDetector(SSDModel):
         if num_img > 0:
             num_area = len(img_procs)
 
-            print(f"\nIn predict(): img:{num_img}, area:{num_area}")
+            # print(f"\nIn predict(): img:{num_img}, area:{num_area}")
 
             imgs_trans:List[np.ndarray] = []
             for img_org in imgs:
@@ -178,7 +181,7 @@ class SSDModelDetector(SSDModel):
 
         return det_results
 
-    def predictDetail(self, det_results:List[List[DetResult]], imgs:List[np.ndarray], min_bbox_size:int, target_class:str, conf=0.5, overlap=0.45) -> List[List[DetResult]]:
+    def predictDetail(self, det_results:List[List[DetResult]], imgs:List[np.ndarray], min_bbox_size:int, num_batch:int, target_class:str, conf=0.5, overlap=0.45) -> List[List[DetResult]]:
         """ 検知（推論）実行（検出結果の中を詳細検知）
 
         - 検出結果の矩形内に対してSSDモデルの検知を再度実行
@@ -187,6 +190,7 @@ class SSDModelDetector(SSDModel):
             det_results (List[List[DetResult]]) : 検出結果（複数） [img_num, obj_num, 検出結果]
             imgs (List[np.ndarray])             : 画像（複数） [img_num,h,w,ch(BGR)]
             min_bbox_size (int)                 : 矩形最小サイズ[px]
+            num_batch (int)                     : バッチ数
             target_class (str)                  : 検知再実行する検出結果クラス
             conf (float, optional)              : 信頼度conf下限閾値. Defaults to 0.5.
             overlap (float, optional)           : 重複有無の判定閾値(IoU). Defaults to 0.45.
@@ -212,11 +216,15 @@ class SSDModelDetector(SSDModel):
                             # サイズがmin_bbox_size以上の領域のみ採用
                             img_procs[img_no].append(copy.deepcopy(img_proc))
                             num_area += 1
+                            if num_area >= num_batch:
+                                break
+                else:
+                    continue
+                break
 
-            print(f"\nIn predictDetail(): img:{num_img}, area:{num_area}")
+            # print(f"\nIn predictDetail(): img:{num_img}, area:{num_area}")
 
             if num_area > 0:
-            # if num_area > 0 and num_area < 8:
 
                 imgs_trans:List[np.ndarray] = []
                 for img_no, img_org in enumerate(imgs):
@@ -227,6 +235,10 @@ class SSDModelDetector(SSDModel):
                         img_trans = self.transImage(img_det)
                         # batch化（リストに追加（SSDモデルにあうようデータ配置組み替えもあわせて実施））
                         imgs_trans.append(img_trans[:, :, (2, 1, 0)]) # [h,w,ch(BGR→RGB)]
+                
+                # GPU実行時に処理時間を安定化させるため、batch数を揃える
+                while len(imgs_trans) < num_batch:
+                    imgs_trans.append(self.img_dummy_)
 
                 # batch化（リスト→torchテンソル型に変換（SSDモデルにあうようデータ配置組み替えもあわせて実施））
                 imgs_trans_np = np.array(imgs_trans)                         # [batch_num, h, w, ch(RGB)]
@@ -385,13 +397,13 @@ def main_play_movie(img_procs:List[ImageProc], num_batch:int, ssd_model:SSDModel
                 det_results = ssd_model.predict(img_procs, batch_imgs, conf, overlap)
 
                 # 試作: 車の枠からナンバープレートを再検出
-                det_results = ssd_model.predictDetail(det_results, batch_imgs, 100, "car", conf, overlap)
+                det_results = ssd_model.predictDetail(det_results, batch_imgs, (num_batch_frame * len(img_procs)), 100, "car", conf, overlap)
                 # det_results = ssd_model.predict(img_procs, batch_imgs, conf, overlap)
 
                 time_e = time.perf_counter()
 
                 time_per_frame = (time_e - time_s) / len(batch_imgs)
-                print(f"In main_play_movie(): fps={1.0/time_per_frame}")
+                # print(f"In main_play_movie(): fps={1.0/time_per_frame}")
 
                 # フレーム毎の処理
                 for batch_frame_no, img_org, det_result in zip(batch_frame_nos, batch_imgs, det_results):
