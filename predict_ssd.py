@@ -16,15 +16,24 @@ import torch
 import torchvision
 
 from common_ssd import ImageProc, MovieLoader
-from common_ssd import SSDModel, DetResult, AnnoData, CalcMAP
+from common_ssd import SSDModel, DetResult, AnnoData, CalcMAP, getAnnoData
 from common_ssd import DrawPen, Logger, makeVocClassesTxtFpath
 
 from vision.ssd.mobilenet_v2_ssd_lite import create_mobilenetv2_ssd_lite, create_mobilenetv2_ssd_lite_predictor
 
-# SSDモデル作成＆推論
+# 
 class SSDModelDetector(SSDModel):
+    """ SSDモデル（検知（推論）用）
+    """
 
     def __init__(self, device:torch.device, net_type:str, weight_fpath:str):
+        """ コンストラクタ
+
+        Args:
+            device (torch.device): デバイス（cpu or cuda)
+            net_type (str)       : SSD種別（vgg or mobilenet）
+            weight_fpath (str)   : パラメータ(重み)ファイルのパス
+        """
         # 学習済み重みをロード
         (net_weights, voc_classes) = self.loadWeight(weight_fpath, device)
 
@@ -53,6 +62,15 @@ class SSDModelDetector(SSDModel):
         return
     
     def loadWeight(self, weight_fpath:str, device:torch.device) -> Tuple[Any, List[str]]:
+        """ パラメータ(重み)ファイルのロード（クラスファイルもロード）
+
+        Args:
+            weight_fpath (str)   : パラメータ(重み)ファイルのパス
+            device (torch.device): デバイス（cpu or cuda)
+
+        Returns:
+            Tuple[Any, List[str]]: (パラメータ(重み)データ、クラス）
+        """
         # ネットワーク重みをロード
         net_weights = torch.load(weight_fpath, weights_only=True, map_location=device) # FutureWarning: You are using torch.load..対策
         # net_weights = torch.load(weight_fpath, weights_only=True) # FutureWarning: You are using torch.load..対策
@@ -69,11 +87,29 @@ class SSDModelDetector(SSDModel):
         return (net_weights, voc_classes)
 
     def transImage(self, img:np.ndarray) -> np.ndarray:
+        """ 画像前処理
+
+        Args:
+            img (np.ndarray): 画像（前処理前）
+
+        Returns:
+            np.ndarray: 画像（前処理後）
+        """
         (img_trans, _ ,_) = self.transform_(img, "val", "", "")
         return img_trans
     
-    def predict(self, img_procs:List[ImageProc], imgs:List[np.ndarray], data_confidence_level:float=0.5, overlap:float=0.45) -> List[List[DetResult]]:
-        
+    def predict(self, img_procs:List[ImageProc], imgs:List[np.ndarray], conf=0.5, overlap=0.45) -> List[List[DetResult]]:
+        """ 検知（推論）実行
+
+        Args:
+            img_procs (List[ImageProc]) : 検出領域（複数）[area_num, 検出領域]
+            imgs (List[np.ndarray])     : 画像（複数） [img_num,h,w,ch(BGR)]
+            conf (float, optional)      : 信頼度conf下限閾値. Defaults to 0.5.
+            overlap (float, optional)   : 重複有無の判定閾値(IoU). Defaults to 0.45.
+
+        Returns:
+            List[List[DetResult]]: 検出結果（複数） [img_num, obj_num, 検出結果]
+        """
         num_img  = len(imgs)
 
         det_results:List[List[DetResult]] = []
@@ -110,7 +146,7 @@ class SSDModelDetector(SSDModel):
 
             # SSDモデルの出力を閾値処理（確信度confが閾値以上の結果を取り出し）
             outputs    = outputs.cpu().detach().numpy() # (batch_num, label, top200, [conf,xmin,ymin,xmax,ymax])
-            find_index = np.where(outputs[:, :, :, 0] >= data_confidence_level) # (batch_num, label, top200)
+            find_index = np.where(outputs[:, :, :, 0] >= conf) # (batch_num, label, top200)
             outputs    = outputs[find_index]
 
             # 抽出した物体数分ループを回す
@@ -142,7 +178,14 @@ class SSDModelDetector(SSDModel):
         return det_results
 
     def nmSuppression(self, det_results:List[DetResult], iou:float=0.45) -> List[DetResult]:
-        # 重複枠の削除
+        """ 重複枠の削除
+        Args:
+            det_results (List[DetResult]): 検出結果（処理前）
+            iou (float, optional)        : 重複有無の判定閾値(IoU). Defaults to 0.45.
+
+        Returns:
+            List[DetResult]: 検出結果（処理後）
+        """
         #   引数iou以上の重なりがある枠が存在する場合、一番確信度が高い枠のみ残し、それ以外を削除する
         #   異なるクラスの枠同士が重なる場合は対象外
         det_results_sup:List[DetResult] = []
@@ -165,6 +208,8 @@ class SSDModelDetector(SSDModel):
         return det_results_sup
 
 class LogEvalAnno(Logger):
+    """ ログ生成（アノテーション結果）
+    """
     def __init__(self, is_out:bool):
         super().__init__(is_out)
         return
@@ -201,7 +246,17 @@ class LogEvalAnno(Logger):
         return
 
 def main_play_movie(img_procs:List[ImageProc], num_batch:int, ssd_model:SSDModelDetector, movie_fpath:str, play_fps:float, conf:float, overlap:float):
+    """ SSD検知実行（動画から）
 
+    Args:
+        img_procs (List[ImageProc]) : 検出領域（複数）[area_num, 検出領域]
+        num_batch (int)             : バッチ処理数（1回で処理する画像数 x 検出領域数）
+        ssd_model (SSDModelDetector): SSDモデル
+        movie_fpath (str)           : 入力動画パス
+        play_fps (float)            : 動作再生fps
+        conf (float)                : 信頼度conf下限閾値
+        overlap (float)             : 重複有無の判定閾値(IoU)
+    """
     num_batch_frame = int(num_batch / len(img_procs))
     if num_batch_frame < 1:
         num_batch_frame = 1
@@ -270,7 +325,15 @@ def main_play_movie(img_procs:List[ImageProc], num_batch:int, ssd_model:SSDModel
     return
 
 def main_det_img(img_procs:List[ImageProc], ssd_model:SSDModelDetector, img_fpath:str, conf:float, overlap:float):
+    """ SSD検知実行（画像1枚）
 
+    Args:
+        img_procs (List[ImageProc]) : 検出領域（複数）[area_num, 検出領域]
+        ssd_model (SSDModelDetector): SSDモデル
+        img_fpath (str)             : 入力画像パス
+        conf (float)                : 信頼度conf下限閾値
+        overlap (float)             : 重複有無の判定閾値(IoU)
+    """
     # 結果出力フォルダ作成
     output_imgdir_path = Logger.createOutputDir(ssd_model.device_.type, ssd_model.net_type_, "")
 
@@ -309,6 +372,15 @@ def main_det_img(img_procs:List[ImageProc], ssd_model:SSDModelDetector, img_fpat
     return
 
 def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float, overlap:float, eval_iou_th:float):
+    """ SSD検知実行（ディレクトリ内の複数画像）＆ 評価（mAP算出（アノテーションデータ付属時のみ））
+
+    Args:
+        ssd_model (SSDModelDetector): SSDモデル
+        img_dir (str): 入力ディレクトリ
+        conf (float): 信頼度conf下限閾値
+        overlap (float): 重複有無の判定閾値(IoU)
+        eval_iou_th (float): 評価（mAP算出）時のIoU閾値
+    """
     # 検出領域は、画像全域のみサポート
     img_proc = ImageProc()
 
@@ -369,7 +441,7 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float, over
                 # アノテーションデータ取得＆描画
                 img_h, img_w, _ = img_org.shape
 
-                anno_data = ImageProc.getAnnoData(val_anno_list[idx], parse_anno, ssd_model.voc_classes_, img_w, img_h)
+                anno_data = getAnnoData(val_anno_list[idx], parse_anno, ssd_model.voc_classes_, img_w, img_h)
                 img_org   = ImageProc.drawAnnoData(img_org, anno_data, DrawPen((128,255,128), 1, 0.4))
 
                 calc_map.add(img_fpath, det_results[0], anno_data)
@@ -414,6 +486,12 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, conf:float, over
 
 
 def main(media_fpath:str, cfg:Dict[str,Any]):
+    """ メイン（SSDモデル作成、検知実行）
+
+    Args:
+        media_fpath (str)   : 入力データパス
+        cfg (Dict[str,Any]) : config
+    """
 
     play_fps:float            = cfg["play_fps"]
     img_procs:List[ImageProc] = cfg["img_procs"]

@@ -26,8 +26,15 @@ from vision.ssd.ssd import SSD as SSD_mb2
 # from vision.ssd.ssd import _xavier_init_
 
 class SSDModelTrainerDebug(Logger):
-
+    """ ログ生成（SSDモデル学習）
+    """
     def __init__(self, is_out:bool, max_epoch:int):
+        """ コンストラクタ
+
+        Args:
+            is_out (bool)   : 出力有無(Falseならログ出力しない)
+            max_epoch (int) : 詳細ログ出力（画像等）するepoch（最大値）
+        """
         super().__init__(is_out)
 
         self.debug_out_max_epoch_  = max_epoch
@@ -38,6 +45,14 @@ class SSDModelTrainerDebug(Logger):
         return
 
     def openLogFile(self, dev_name:str, net_type:str, res_weight_fpath:str, fname:str):
+        """ ログファイルopen
+
+        Args:
+            dev_name (str)          : デバイス(cpu or cuda)
+            net_type (str)          : SSD種別（vgg or mobilenet）
+            res_weight_fpath (str)  : 出力パラメータファイル名
+            fname (str)             : ログファイル名
+        """
         if self.is_out_ == True:
             self.res_weight_fpath_ = res_weight_fpath
 
@@ -46,6 +61,12 @@ class SSDModelTrainerDebug(Logger):
         return
 
     def outputLogModuleInfo(self, mod_name:str, mod_list:nn.ModuleList):
+        """ SSDモデルモジュール情報出力
+
+        Args:
+            mod_name (str)          : モジュール名
+            mod_list (nn.ModuleList): モジュールリスト
+        """
         if self.isOutputLog() == True:
             for idx,module in enumerate(mod_list):
                 self.log_fp_.write(f"[{mod_name}{idx}] {module}")
@@ -61,6 +82,11 @@ class SSDModelTrainerDebug(Logger):
         return
     
     def outputLogNetInfo(self, net):
+        """ SSDモデル情報出力
+
+        Args:
+            net (_type_): SSDモデル
+        """
         if self.isOutputLog() == True:
             if isinstance(net, SSD_mb2) == True:
                 self.outputLogNetInfoSSDmb2(net)
@@ -69,6 +95,11 @@ class SSDModelTrainerDebug(Logger):
         return
 
     def outputLogNetInfoSSDvgg(self, net:SSD_vgg):
+        """ SSDモデル情報出力（VGGベースSSD）
+
+        Args:
+            net (SSD_vgg): SSDモデル（VGGベース）
+        """
         self.log_fp_.write("\n == net(vgg) ==\n")
         self.outputLogModuleInfo("vgg",    net.vgg)
         self.outputLogModuleInfo("extras", net.extras)
@@ -77,6 +108,11 @@ class SSDModelTrainerDebug(Logger):
         self.log_fp_.write("\n")
         return
     def outputLogNetInfoSSDmb2(self, net:SSD_mb2):
+        """ SSDモデル情報出力（mobilenetベースSSD）
+
+        Args:
+            net (SSD_mb2): SSDモデル（mobilenetベース）
+        """
         self.log_fp_.write("\n == net(mobile net v2 lite) ==\n")
         self.outputLogModuleInfo("basenet",                net.base_net)
         self.outputLogModuleInfo("extras",                 net.extras)
@@ -86,6 +122,14 @@ class SSDModelTrainerDebug(Logger):
         return
     
     def outputLogSummary(self,dev_name:str, learn_data_path:str, epoch:int, val_loss:float):
+        """ 学習概要を出力
+
+        Args:
+            dev_name (str)       : デバイス(cpu or cuda)
+            learn_data_path (str): 学習データパス（ディレクトリ）
+            epoch (int)          : epoch数
+            val_loss (float)     : パラメータ出力時の損失（val loss）
+        """
         if self.isOutputLog() == True:
             self.log_fp_.write("\n == summary ==\n")
             self.log_fp_.write(f",device:,,{dev_name}\n")
@@ -96,6 +140,16 @@ class SSDModelTrainerDebug(Logger):
         return
     
     def outputLogEpochSummary(self, epoch:int, time_sec:float, train_loss:float, val_loss:float, train_iter:int, val_iter:int):
+        """ epoch毎の結果出力
+
+        Args:
+            epoch (int)         : epoch
+            time_sec (float)    : 処理時間[sec]
+            train_loss (float)  : 損失(train loss)
+            val_loss (float)    : 損失(val loss)
+            train_iter (int)    : iteration数（train）
+            val_iter (int)      : iteration数（val）
+        """
         if self.isOutputLog() == True:
             now     = datetime.datetime.now(self.JST_)
             now_str = now.strftime("%Y%m%d_%H%M%S")
@@ -103,6 +157,11 @@ class SSDModelTrainerDebug(Logger):
         return
     
     def outputLogDataSetSummary(self, voc_dataset:VocDataSetMng):
+        """ 学習データ概要を出力
+
+        Args:
+            voc_dataset (VocDataSetMng): 学習データセット
+        """
         if self.isOutputLog() == True:
             self.log_fp_.write("\n == dataset info ==\n")
             self.log_fp_.write(f"batch_size: train={voc_dataset.batch_size_}, val={voc_dataset.batch_size_val_}\n\n")
@@ -122,6 +181,14 @@ class SSDModelTrainerDebug(Logger):
         return
 
     def dumpInputImage(self, epoch:int, images:List[torch.Tensor], phase:str, batch_idx:int):
+        """  詳細ログ出力（学習画像（前処理後）のダンプ）
+
+        Args:
+            epoch (int)                 : epoch
+            images (List[torch.Tensor]) : 画像（前処理後）
+            phase (str)                 : train or val
+            batch_idx (int)             : バッチindex
+        """
         if (self.is_out_ == True) and (epoch <= self.debug_out_max_epoch_):
             for image_no in range(images.shape[0]):
                 debug_out_fpath = self.outdir_ + "/epoch" + str(epoch) + "_" + phase + "_b" + str(batch_idx) + "_" + str(image_no) + ".jpg"
@@ -130,8 +197,19 @@ class SSDModelTrainerDebug(Logger):
 
 # SSDモデル作成＆学習
 class SSDModelTrainer(SSDModel):
+    """ SSDモデル（学習用）
+    """
 
     def __init__(self, device:torch.device, net_type:str, weight_fpath:str, voc_classes:List[str], freeze_layer:int):
+        """ コンストラクタ
+
+        Args:
+            device (torch.device)   : デバイス（cpu or cuda)
+            net_type (str)          : SSD種別（vgg or mobilenet）
+            weight_fpath (str)      : パラメータ(重み)ファイルのパス
+            voc_classes (List[str]) : クラス
+            freeze_layer (int)      : パラメータ更新freezeレイヤ（0～freeze_layerまでをfreeze)
+        """
         super().__init__(device, voc_classes, net_type)
 
         # SSDネットワークモデル
@@ -156,21 +234,15 @@ class SSDModelTrainer(SSDModel):
     
     @staticmethod
     def createSSDvgg(weight_fpath:str, cfg_vgg:Dict[str,Any], freeze_layer:int) -> SSD_vgg:
-        """
-        VGG16ベースSSD作成＆パラメータ初期値設定
+        """ VGG16ベースSSD作成＆パラメータ初期値設定
 
-        Parameters
-        ----------
-        weight_fpath:  
-            ベースネット(VGG16)パラメータファイル
-        cfg_vgg: 
-            SSD用config
-        freeze_layer: 
-            パラメータ更新を止めるレイヤ
+        Args:
+            weight_fpath (str)      : ベースネット(VGG16)パラメータファイル
+            cfg_vgg (Dict[str,Any]) : SSD用config
+            freeze_layer (int)      : パラメータ更新freezeレイヤ（0～freeze_layerまでをfreeze)
 
-        Returns
-        -------
-        net : VGG16ベースSSD
+        Returns:
+            SSD_vgg: SSDモデル(VGG16ベース)
         """
         # SSD作成
         net = SSD_vgg(phase="train", cfg=cfg_vgg)
@@ -193,21 +265,15 @@ class SSDModelTrainer(SSDModel):
 
     @staticmethod
     def createSSDmb2(num_classes:int, weight_fpath:str, freeze_layer:int) -> SSD_mb2:
-        """
-        mobilenet-v2-liteベースSSD作成＆パラメータ初期値設定
+        """ mobilenet-v2-liteベースSSD作成＆パラメータ初期値設定
 
-        Parameters
-        ----------
-        num_classes:  
-            クラス数
-        weight_fpath:  
-            ベースネット(mobilenet-v2-lite)パラメータファイル
-        freeze_layer: 
-            パラメータ更新を止めるレイヤ
+        Args:
+            num_classes (int)   : クラス数
+            weight_fpath (str)  : ベースネット(mobilenet-v2-lite)パラメータファイル
+            freeze_layer (int)  : パラメータ更新freezeレイヤ（0～freeze_layerまでをfreeze)
 
-        Returns
-        -------
-        net : mobilenet-v2-liteベースSSD
+        Returns:
+            SSD_mb2: SSDモデル(mobilenet-v2-liteベース)
         """
         # SSD作成
         net = create_mobilenetv2_ssd_lite(num_classes)
@@ -237,6 +303,11 @@ class SSDModelTrainer(SSDModel):
 
     @staticmethod
     def initWeight(m):
+        """ Heの初期化
+
+        Args:
+            m (_type_): 初期化するモジュール
+        """
         if isinstance(m, nn.Conv2d):
             init.kaiming_normal_(m.weight.data)
             if m.bias is not None:  # バイアス項がある場合
@@ -244,7 +315,13 @@ class SSDModelTrainer(SSDModel):
         return
 
     def train(self, voc_dataset:VocDataSetMng, num_epochs:int, res_weight_fpath:str):
-        
+        """ SSDモデル学習
+
+        Args:
+            voc_dataset (VocDataSetMng) : 学習データ
+            num_epochs (int)            : epoch数
+            res_weight_fpath (str)      : 出力パラメータファイル名
+        """
         dataloaders_dict = voc_dataset.dataloaders_dict_
 
         # debug
@@ -360,6 +437,11 @@ class SSDModelTrainer(SSDModel):
 
 
 def main(cfg:Dict[str,Any]):
+    """ メイン（SSDモデル作成、学習実行）
+
+    Args:
+        cfg (Dict[str,Any]): config
+    """
 
     num_epochs:int        = cfg["train_num_epoch"]
     data_path:str         = cfg["train_data_path"]

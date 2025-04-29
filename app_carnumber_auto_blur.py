@@ -15,16 +15,26 @@ from tkinter import filedialog
 
 import torch
 
-
 from utils.data_augumentation import jaccard_numpy
 from common_ssd import ImageProc, MovieLoader, DetResult, DrawPen, Logger, KalmanFilter2D
 from predict_ssd import SSDModelDetector
 
-# 検出されたナンバープレート1つ分
-# （ナンバープレートと、ナンバープレートを包含する車のペアを保持）
 class DetNumberPlate:
+    """ 検出されたナンバープレート1つ分
+
+    （ナンバープレートと、ナンバープレートを包含する車のペアを保持）
+    """
 
     def __init__(self, cfg:Dict[str,Any], frame_w:int, frame_h:int, fps:float):
+        """ コンストラクタ
+
+        Args:
+            cfg (Dict[str,Any]) : config
+            frame_w (int)       : 画像サイズ（width）[px]
+            frame_h (int)       : 画像サイズ（height）[px]
+            fps (float)         : 再生fps [cycle/sec]
+        """
+
         self.id_         = 0
         self.is_valid_   = False
         self.frame_w_    = frame_w
@@ -61,6 +71,12 @@ class DetNumberPlate:
         return ret
 
     def updateDetObject(self, obj_number:DetResult, obj_car:DetResult):
+        """ 検出物体の更新（引数で指定された物体に更新）
+
+        Args:
+            obj_number (DetResult)  : ナンバープレート
+            obj_car (DetResult)     : 車
+        """
         if (obj_number is not None) and (obj_car is not None):
             self.is_valid_ = True
 
@@ -77,6 +93,11 @@ class DetNumberPlate:
         return
 
     def updateDetCarObject(self, obj_car:DetResult):
+        """ 検出物体（車のみ）の更新（引数で指定された物体に更新）
+
+        Args:
+            obj_car (DetResult): 車
+        """        
         if obj_car is not None:
             self.is_valid_ = True
 
@@ -90,6 +111,13 @@ class DetNumberPlate:
         return
 
     def setDetObject(self, id:int, obj_number:DetResult, obj_car:DetResult):
+        """ 検出物体の設定（引数で指定された物体に無条件で更新）
+
+        Args:
+            id (int)                : 物体ID ※現状、未参照
+            obj_number (DetResult)  : ナンバープレート
+            obj_car (DetResult)     : 車
+        """        
         if (obj_number is not None) and (obj_car is not None):
             self.id_ = id
             self.is_valid_   = True
@@ -98,6 +126,11 @@ class DetNumberPlate:
         return
 
     def updateAccumConf(self, conf_val:float):
+        """ 信頼度の累積
+
+        Args:
+            conf_val (float): 信頼度conf
+        """        
         # 累積信頼度の更新
         self.accum_conf_ += conf_val
 
@@ -112,7 +145,8 @@ class DetNumberPlate:
         return
 
     def updatePos(self):
-        # 位置更新（ナンバープレート外接矩形の中心座標の推定実行）
+        """ 位置更新（ナンバープレート外接矩形の中心座標の推定実行）
+        """        
         if self.isValid() == True:
 
             self.pos_estimator_.predict() # 予測ステップ
@@ -128,7 +162,11 @@ class DetNumberPlate:
         return
 
     def getEstimatedNumberBBox(self) -> np.ndarray:
-        # ナンバープレートの外接矩形（推定値）を返す
+        """ ナンバープレートの外接矩形（推定値）を返す
+
+        Returns:
+            np.ndarray: ナンバープレートの外接矩形（推定値）
+        """        
         ret_bbox = np.zeros((4,)).astype(int)
 
         if self.isValid() == True:
@@ -178,9 +216,19 @@ class DetNumberPlate:
     
     @staticmethod
     def searchOwnerCar(obj_number:DetResult, det_objs:List[DetResult], own_car_rate_th:float) -> DetResult:
-        # ナンバープレート（obj_number）を所有（包含）する車の検出結果を探す
-        #    「重なり矩形面積／ナンバープレートの面積」が閾値以上の場合に、「所有する（包含する）」と判定
-        # 複数見つかった場合は、信頼度が一番大きな車を返す
+        """ ナンバープレート（obj_number）を所有（包含）する車の検出結果を探索
+
+        - 「重なり矩形面積／ナンバープレートの面積」が閾値以上の場合に、「所有する（包含する）」と判定
+        - 複数見つかった場合は、信頼度が一番大きな車を返す
+        
+        Args:
+            obj_number (DetResult)      : ナンバープレート
+            det_objs (List[DetResult])  : 検出結果（集合）
+            own_car_rate_th (float)     : 判定閾値（「重なり矩形面積／ナンバープレートの面積」の閾値）
+
+        Returns:
+            DetResult: ナンバープレート（obj_number）を所有（包含）する車
+        """        
         obj_car:DetResult = None
         
         bbox_n_area = float(obj_number.bbox_area_)
@@ -207,10 +255,19 @@ class DetNumberPlate:
 
         return obj_car
 
-# 検出されたナンバープレートを時系列管理
 class DetNumberPlateMng:
+    """　検出されたナンバープレートを時系列管理
+    """    
 
     def __init__(self, cfg:Dict[str,Any], frame_w:int, frame_h:int, fps:float):
+        """ コンストラクタ
+
+        Args:
+            cfg (Dict[str,Any]) : config
+            frame_w (int)       : 画像サイズ（width）[px]
+            frame_h (int)       : 画像サイズ（height）[px]
+            fps (float)         : 再生fps [cycle/sec]
+        """        
         self.cfg_     = cfg
         self.frame_w_ = frame_w
         self.frame_h_ = frame_h
@@ -220,13 +277,20 @@ class DetNumberPlateMng:
         return
 
     def initCycle(self):
-        # 周期処理開始時の初期化
-        #   今周期検出済フラグをリセット
+        """　周期処理開始時の初期化（今周期検出済フラグをリセット）
+        """
         for det_obj in self.det_obj_buf_:
             det_obj.resetDetCurFlag()
         return
 
     def addCurDetNumber(self, det_results:List[DetResult], same_cur_iou_th=0.5, own_car_rate_th=0.5):
+        """ 今周期の検出結果を登録
+
+        Args:
+            det_results (List[DetResult])    : 検出結果
+            same_cur_iou_th (float, optional): 同一の車と判定するIoU閾値. Defaults to 0.5.
+            own_car_rate_th (float, optional): 判定閾値（「重なり矩形面積／ナンバープレートの面積」の閾値）. Defaults to 0.5.
+        """        
         # 登録済みの車の外接矩形bboxを抽出
         regist_cars_bbox = [obj_reg.obj_car_.bbox_ 
                             # isValid()==Falseの場合、重なりなしと判定される外接矩形を入れておく
@@ -287,11 +351,21 @@ class DetNumberPlateMng:
         return
 
     def trackingCar(self, obj_car:DetResult, same_cur_iou_th:float, obj_cars_bbox:List[np.ndarray]) -> int:
-        # 今回のobj_carが、obj_cars_bboxの中にあるかどうかを確認（トラッキング）
-        #   - もしあれば、indexを返す
-        #   - 複数該当する場合は、最も重なりの大きな車のindexを返す
-        #   - ない場合は、-1を返す
-        # 同一かどうかは、車同士の外接矩形の重なり(iou)＞閾値(same_cur_iou_th) で判定
+        """ 今周期の検出結果（車）が、登録済み（前周期）の検出結果に存在するかどうかを確認（トラッキング）
+
+        - もし存在すれば、indexを返す
+        - 複数存在する場合は、最も重なりの大きな車のindexを返す
+        - ない場合は、-1を返す
+        - 同一かどうかは、車同士の外接矩形の重なり(iou)＞閾値(same_cur_iou_th) で判定
+
+        Args:
+            obj_car (DetResult): 車
+            same_cur_iou_th (float): 同一の車と判定するIoU閾値
+            obj_cars_bbox (List[np.ndarray]): 登録済み（前周期）の検出結果（車の外接矩形（Boundingbox））
+
+        Returns:
+            int: 該当する車（検出結果のindex）
+        """        
         ret_idx = -1
 
         if len(obj_cars_bbox) > 0:
@@ -310,10 +384,12 @@ class DetNumberPlateMng:
         return ret_idx
 
     def updateCycle(self):
-        # 個々の物体（ナンバープレート＆車）の時系列管理
-        #   - 今周期にナンバープレート検出ありの場合は、累積信頼度を加算
-        #   - 今周期にナンバープレート検出なしの場合は、累積信頼度を減算
-        #   - 累積信頼度が高いものを残す（低くなった物体（検出されなくなったもの）を削除）
+        """ 個々の物体（ナンバープレート＆車）の時系列管理
+
+        - 今周期にナンバープレート検出ありの場合は、累積信頼度を加算
+        - 今周期にナンバープレート検出なしの場合は、累積信頼度を減算
+        - 累積信頼度が高いものを残す（低くなった物体（検出されなくなったもの）を削除）
+        """
         obj_reg_buf_updated: List[DetNumberPlate] = []
 
         for obj_reg in self.det_obj_buf_:
@@ -349,7 +425,11 @@ class DetNumberPlateMng:
         return
 
     def getNumberPlates(self) -> List[DetResult]:
-        # 登録されているナンバープレートを返す
+        """ 登録されているナンバープレートを返す
+
+        Returns:
+            List[DetResult]: 登録されているナンバープレート
+        """        
         ret_objs:List[DetResult] = []
 
         for det_obj in self.det_obj_buf_:
@@ -370,14 +450,24 @@ class DetNumberPlateMng:
         return ret_objs
 
     def getCars(self) -> List[DetResult]:
-        # 登録されている車を返す
+        """ 登録されている車を返す
+
+        Returns:
+            List[DetResult]: 登録されている車
+        """        
         ret_objs = [det_obj.obj_car_ 
                     for det_obj in self.det_obj_buf_ 
                     if det_obj.isValid() == True]
         return ret_objs
 
 def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,Any]):
+    """ ナンバープレートぼかし処理メイン
 
+    Args:
+        movie_fpath (str)           : 入力動画パス
+        ssd_model (SSDModelDetector): SSDモデル
+        cfg (Dict[str,Any])         : config
+    """
     play_fps:float                  = cfg["play_fps"]
     img_procs:List[ImageProc]       = cfg["img_procs"]
     img_erase_rects:List[ImageProc] = cfg["img_erase"]
@@ -515,7 +605,12 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
 
 
 def main(media_fpath:str, cfg:Dict[str,Any]):
+    """ メイン（SSDモデル作成、ナンバープレートぼかし処理実行）
 
+    Args:
+        media_fpath (str)   : 入力動画パス
+        cfg (Dict[str,Any]) : config
+    """    
     net_type:str     = cfg["ssd_model_net_type"]
     weight_fpath:str = cfg["ssd_model_weight_fpath"]
 

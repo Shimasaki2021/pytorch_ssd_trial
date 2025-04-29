@@ -20,7 +20,17 @@ from utils.data_augumentation import jaccard_numpy
 from vision.ssd.config import mobilenetv1_ssd_config as ssd_mb2_cfg
 
 class DetResult:
+    """ 検出結果1つ分 """
+
     def __init__(self, class_name:str, bbox:np.ndarray, score:float, is_det_cur=True):
+        """ コンストラクタ
+
+        Args:
+            class_name (str)            : クラス
+            bbox (np.ndarray)           : 外接矩形(BoundingBox)[xmin,ymin,xmax,ymax]
+            score (float)               : 信頼度conf
+            is_det_cur (bool, optional) : 今周期検出済みフラグ. Defaults to True.
+        """
         self.class_name_ = class_name
         self.bbox_       = bbox # [xmin,ymin,xmax,ymax]
         self.score_      = score
@@ -41,6 +51,15 @@ class DetResult:
 
     @staticmethod
     def calcOverlapAreaBBox(bbox1:np.ndarray, bbox2:np.ndarray) -> float:
+        """ 外接矩形の重なり部分の面積を算出（ない場合は0）
+
+        Args:
+            bbox1 (np.ndarray): 外接矩形1(BoundingBox1)
+            bbox2 (np.ndarray): 外接矩形2(BoundingBox2)
+
+        Returns:
+            float: 外接矩形1,2の重なり部分の面積[px]
+        """
         # 重なり部分の面積を算出（ない場合は0）
         bbox_overlap_area = 0.0
         bbox_inter = np.concatenate([np.maximum(bbox1[:2], bbox2[:2]), np.minimum(bbox1[2:], bbox2[2:])])
@@ -77,6 +96,22 @@ class AnnoData:
 
         return (det_result_max, jaccard_max)
 
+
+def getAnnoData(anno_file:str, parse_anno:Anno_xml2list, voc_classes:List[str], img_w:int, img_h:int) -> List[AnnoData]:
+    # anno_list: [[xmin, ymin, xmax, ymax, label_ind], ... ]
+    anno_list = parse_anno(anno_file, img_w, img_h)
+
+    ret_results:List[AnnoData] = []
+
+    for anno_data in anno_list:
+        label_name = voc_classes[int(anno_data[4])]
+        bb_org = np.array(anno_data[:4]) * np.array([img_w, img_h, img_w, img_h])
+        bb_i   = bb_org.astype(np.int64)
+
+        ret_results.append(AnnoData(label_name, bb_i))
+
+    return ret_results
+
 class DrawPen:
     def __init__(self, col:Tuple[int], thick:int, char_size:float):
         self.col_       = col
@@ -85,16 +120,32 @@ class DrawPen:
         return
 
 class ImageProc:
+    """ 画像処理（クリップ、ぼかし、文字描画等） """
+    def __init__(self, lu_x=0, lu_y=0, rb_x=0, rb_y=0):
+        self.init(lu_x, lu_y, rb_x, rb_y)
+        return 
 
-    def __init__(self, lu_x:int=0, lu_y:int=0, rb_x:int=0, rb_y:int=0):
+    def init(self, lu_x=0, lu_y=0, rb_x=0, rb_y=0, img:np.ndarray=None):
+        """ コンストラクタ
+
+        Args:
+            lu_x (int, optional)        : 矩形左上x. Defaults to 0.
+            lu_y (int, optional)        : 矩形左上y. Defaults to 0.
+            rb_x (int, optional)        : 矩形右下x. Defaults to 0.
+            rb_y (int, optional)        : 矩形右下y. Defaults to 0.
+            img (np.ndarray, optional)  : 画像. Defaults to None.
+        """
         self.darea_lu_x_ = lu_x
         self.darea_lu_y_ = lu_y
         self.darea_rb_x_ = rb_x
         self.darea_rb_y_ = rb_y
         self.darea_w_ = rb_x - lu_x + 1
         self.darea_h_ = rb_y - lu_y + 1
-        self.img_w_ = 0
-        self.img_h_ = 0
+        if img is not None:
+            (self.img_h_, self.img_w_, _) = img.shape
+        else:
+            self.img_w_ = 0
+            self.img_h_ = 0
 
         self.is_no_proc_ = False
         if self.darea_lu_x_ == 0 and \
@@ -103,9 +154,55 @@ class ImageProc:
             self.darea_rb_y_ == 0:
 
             self.is_no_proc_ = True
-        return 
+        return
 
-    def clip(self, img:np.ndarray) -> np.ndarray:  
+    def initFromDet(self, img:np.ndarray, det:DetResult, min_size:int):
+        """ コンストラクタ（検出結果から生成）
+
+        Args:
+            img (np.ndarray): 画像
+            det (DetResult) : 検出結果
+            min_size (int)  : 矩形最小サイズ[px]
+        """
+        if det.bbox_w_ > min_size and det.bbox_h_ > min_size:
+            self.init(det.bbox_[0], det.bbox_[1], det.bbox_[2], det.bbox_[3], img)
+
+        else:
+            min_size_half = int(min_size / 2)
+            (img_h, img_w, _) = img.shape
+
+            cx = int((det.bbox_[0] + det.bbox_[2]) / 2)
+            cy = int((det.bbox_[1] + det.bbox_[3]) / 2)
+            if cx - min_size_half < 0:
+                cx = min_size_half
+            elif cx + min_size_half >= img_w:
+                cx = img_w - min_size_half
+            else:
+                pass
+            if cy - min_size_half < 0:
+                cy = min_size_half
+            elif cy + min_size_half >= img_h:
+                cy = img_h - min_size_half
+            else:
+                pass
+
+            lu_x = cx - min_size_half
+            lu_y = cy - min_size_half
+            rb_x = lu_x + min_size
+            rb_y = lu_y + min_size
+            self.init(lu_x, lu_y, rb_x, rb_y, img)
+
+        return
+
+    def clip(self, img:np.ndarray) -> np.ndarray:
+        """ クリップ
+
+        Args:
+            img (np.ndarray): 画像
+
+        Returns:
+            np.ndarray: クリップ後の画像
+        """
         (self.img_h_, self.img_w_, _) = img.shape
 
         if self.is_no_proc_ == False:
@@ -114,6 +211,14 @@ class ImageProc:
             return copy.deepcopy(img)
     
     def convBBox(self, bbox:np.ndarray) -> np.ndarray:
+        """ 外接矩形（BoundingBox）を正規座標→画像座標に変換
+
+        Args:
+            bbox (np.ndarray): 外接矩形（正規座標）※x,yの値域が0～1
+
+        Returns:
+            np.ndarray: 外接矩形（画像座標）※x,yの値域が0～画像サイズ(w,h)
+        """
         area_w = self.img_w_
         area_h = self.img_h_
         if self.is_no_proc_ == False:
@@ -132,7 +237,16 @@ class ImageProc:
         return bb_i
 
     def drawDetArea(self, img_org:np.ndarray, pen:DrawPen, area_name:str="det area") -> np.ndarray:
+        """ 検出範囲の矩形を描画
 
+        Args:
+            img_org (np.ndarray)     : 画像（描画前）
+            pen (DrawPen)            : 色、線の太さ等
+            area_name (str, optional): 矩形の名前. Defaults to "det area".
+
+        Returns:
+            np.ndarray: 画像（描画後）
+        """
         if self.is_no_proc_ == False:
             # 検出範囲を描画
             cv2.rectangle(img_org, 
@@ -145,7 +259,15 @@ class ImageProc:
         return img_org
 
     def eraseRectArea(self, img_org:np.ndarray, is_blur:bool) -> np.ndarray:
-        # 固定領域を消去
+        """ 領域消去（inpainting）
+
+        Args:
+            img_org (np.ndarray): 画像（処理前）
+            is_blur (bool)      : 消去後の領域内をぼかすかどうか
+
+        Returns:
+            np.ndarray: 画像（処理後）
+        """
         if self.is_no_proc_ == False:
             img_mask = cv2.cvtColor(img_org, cv2.COLOR_BGR2GRAY)
             img_mask[:,:] = 0
@@ -171,23 +293,21 @@ class ImageProc:
         return ret_str
 
     @staticmethod
-    def getAnnoData(anno_file:str, parse_anno:Anno_xml2list, voc_classes:List[str], img_w:int, img_h:int) -> List[AnnoData]:
-        # anno_list: [[xmin, ymin, xmax, ymax, label_ind], ... ]
-        anno_list = parse_anno(anno_file, img_w, img_h)
-
-        ret_results:List[AnnoData] = []
-
-        for anno_data in anno_list:
-            label_name = voc_classes[int(anno_data[4])]
-            bb_org = np.array(anno_data[:4]) * np.array([img_w, img_h, img_w, img_h])
-            bb_i   = bb_org.astype(np.int64)
-
-            ret_results.append(AnnoData(label_name, bb_i))
-
-        return ret_results
-
-    @staticmethod
     def drawResultSummary(img_org:np.ndarray, frame_no:int, frame_num:int, dev_type:str, net_type:str, time_proc_sec:float, pen:DrawPen) -> np.ndarray:
+        """ 結果（概要）を描画
+
+        Args:
+            img_org (np.ndarray) : 画像（描画前）
+            frame_no (int)       : frame番号
+            frame_num (int)      : frame数
+            dev_type (str)       : デバイス（cpu or cuda)
+            net_type (str)       : SSD種別（vgg or mobilenet）
+            time_proc_sec (float): 処理時間[sec]
+            pen (DrawPen)        : 色、線の太さ等
+
+        Returns:
+            np.ndarray: 画像（描画後）
+        """
         # FPS等を描画
         str_frame = ""
         if frame_num > 0:
@@ -201,7 +321,16 @@ class ImageProc:
 
     @staticmethod
     def drawResultDet(img_org:np.ndarray, det_results:List[DetResult], pen:DrawPen) -> np.ndarray:
+        """ 検出結果（枠等）を描画
 
+        Args:
+            img_org (np.ndarray)         : 画像（描画前）
+            det_results (List[DetResult]): 検出結果
+            pen (DrawPen)                : 色、線の太さ等
+
+        Returns:
+            np.ndarray: 画像（描画後）
+        """
         for det in det_results:
             display_txt = f"{det.class_name_}:{det.score_:.2f}"
 
@@ -222,7 +351,16 @@ class ImageProc:
 
     @staticmethod
     def drawAnnoData(img_org:np.ndarray, anno_data:List[AnnoData], pen:DrawPen) -> np.ndarray:
+        """ アノテーション結果を描画
 
+        Args:
+            img_org (np.ndarray)        : 画像（描画前）
+            anno_data (List[AnnoData])  : アノテーション
+            pen (DrawPen)               : 色、線の太さ等
+
+        Returns:
+            np.ndarray: 画像（描画後）
+        """
         alpha = 0.6
         img_cp = img_org.copy()
         
@@ -244,6 +382,17 @@ class ImageProc:
 
     @staticmethod
     def drawText(img:np.ndarray, text:str, loc:cv2.typing.Point, scale:float, col:cv2.typing.Scalar, thick:int, is_bound:bool):
+        """ 文字描画
+
+        Args:
+            img (np.ndarray)        : 画像
+            text (str)              : 文字
+            loc (cv2.typing.Point)  : 描画位置
+            scale (float)           : サイズ
+            col (cv2.typing.Scalar) : 色
+            thick (int)             : 線の太さ
+            is_bound (bool)         : 縁取りの有無
+        """
         if is_bound == True:
             #col_bg = [255-c for c in col]
             if (col[0] + col[1] + col[2]) > (255*3/2):
@@ -257,7 +406,16 @@ class ImageProc:
     
     @staticmethod
     def blurDetObject(img_org:np.ndarray, det_results:List[DetResult], blur_kernel_size:int) -> np.ndarray:
-        # 検出位置にぼかしを入れる
+        """ 検出結果の枠内にぼかしを入れる
+
+        Args:
+            img_org (np.ndarray)         : 画像（処理前）
+            det_results (List[DetResult]): 検出結果
+            blur_kernel_size (int)       : ぼかす強度(blurカーネルサイズ)
+
+        Returns:
+            np.ndarray: 画像（処理後）
+        """
         for det in det_results:
             if (det.bbox_[2] - det.bbox_[0] > 0) and (det.bbox_[3] - det.bbox_[1] > 0):
 
@@ -272,8 +430,16 @@ class ImageProc:
     
 
 class MovieLoader:
-
+    """ 動画読み込み
+    """
     def __init__(self, movie_fpath:str, play_fps:float, num_batch_frame:int):
+        """ コンストラクタ
+
+        Args:
+            movie_fpath (str)    : 動画ファイルパス
+            play_fps (float)     : 再生速度(fps)
+            num_batch_frame (int): 一度に読み込む（バッチ処理する）フレーム数[frame/cycle]
+        """
         # 入力動画読み込み
         self.cap_ = cv2.VideoCapture(movie_fpath)
 
@@ -300,6 +466,14 @@ class MovieLoader:
         return self
 
     def __next__(self) -> Tuple[List[int], List[np.ndarray]]:
+        """ 画像読み込み
+
+        Raises:
+            StopIteration: iteration終了
+
+        Returns:
+            Tuple[List[int], List[np.ndarray]]: (frame番号, 読み込んだ画像) ※バッチ処理数分のリスト
+        """
         ret_batch_frame_nos:List[int]   = []
         ret_batch_imgs:List[np.ndarray] = []
 
@@ -341,9 +515,21 @@ class MovieLoader:
 
 
 class VocDataSetMng:
+    """ VOCデータセット管理
+    """
 
     def __init__(self, data_path:str, voc_classes:List[str], input_size:int, color_mean:List[int], color_std:float, batch_size:int, test_rate:float):
+        """ コンストラクタ(データローダー作成)
 
+        Args:
+            data_path (str)         : データ格納ディレクトリ
+            voc_classes (List[str]) : クラス
+            input_size (int)        : SSDの入力画像サイズ(=300固定)
+            color_mean (List[int])  : 色の平均値
+            color_std (float)       : 色の標準偏差
+            batch_size (int)        : バッチサイズ
+            test_rate (float)       : 検証用画像の割合(全体の何割を検証用画像として使うか)
+        """
         self.batch_size_ = batch_size
         self.test_rate_  = test_rate
         self.batch_size_val_ = int(float(batch_size) * test_rate)
@@ -402,7 +588,14 @@ class VocDataSetMng:
         return
     
     def calcAnnoObjInfo(self, phase:str) -> Dict[str,Dict[str,any]]:
-        # 物体(正解)情報（数、サイズ）を集計
+        """ アノテーション情報を集計（クラス毎の物体数、平均サイズ）
+
+        Args:
+            phase (str): train or val
+
+        Returns:
+            Dict[str,Dict[str,any]]: 集計結果
+        """
         obj_info:Dict[str,any] = {"num":0, "w_ave":0.0, "h_ave":0.0}
         objset_info = {}
         for cls_name in self.voc_classes_:
@@ -471,7 +664,7 @@ class VocDataSetMng:
         return (num_obj, w_ave, h_ave)
 
 
-def iou(box1, box2):
+def iou(box1, box2) -> float:
     """IoU計算"""
     x1 = max(box1[0], box2[0])
     y1 = max(box1[1], box2[1])
@@ -485,7 +678,7 @@ def iou(box1, box2):
     union_area = box1_area + box2_area - inter_area
     return inter_area / union_area if union_area != 0 else 0
 
-def compute_ap(recalls, precisions):
+def compute_ap(recalls, precisions) -> float:
     """11-point interpolationのAP計算（Pascal VOC方式）"""
     recalls = np.concatenate(([0.], recalls, [1.]))
     precisions = np.concatenate(([0.], precisions, [0.]))
@@ -498,11 +691,16 @@ def compute_ap(recalls, precisions):
     return ap
 
 def evaluate_map(predictions:Dict[str,List], ground_truths:Dict[str,List], class_names:List[str], iou_threshold=0.5) -> Tuple[float, List[float]]:
-    """
-    mAP算出
-    :param predictions: dict[image_id] -> list of (bbox, score, class_id)
-    :param ground_truths: dict[image_id] -> list of (bbox, class_id)
-    :return: mAP(float), per_class_AP(list)
+    """ mAP算出
+
+    Args:
+        predictions (Dict[str,List])    : 検出結果 ※key＝画像IDの辞書
+        ground_truths (Dict[str,List])  : 正解 ※key＝画像IDの辞書
+        class_names (List[str])         : クラス名
+        iou_threshold (float, optional) : 検出結果＝正解とみなすIoU下限閾値. Defaults to 0.5.
+
+    Returns:
+        Tuple[float, List[float]]: (mAP, クラス毎のAP)
     """
     aps = []
     for class_name in class_names:
@@ -558,9 +756,17 @@ def evaluate_map(predictions:Dict[str,List], ground_truths:Dict[str,List], class
     mAP = np.mean(aps)
     return mAP, aps
 
-# Mean Average Precision算出
 class CalcMAP:
+    """ Mean Average Precision算出 (関数evaluate_map()のラッパークラス)
+    """
     def __init__(self, img_list:List[str], voc_classes:List[str], iou_thres:float):
+        """ コンストラクタ
+
+        Args:
+            img_list (List[str])    : データセット画像名のリスト
+            voc_classes (List[str]) : クラス
+            iou_thres (float)       : 検出結果＝正解とみなすIoU下限閾値
+        """
         img_fnames = [os.path.splitext(os.path.basename(img_fpath))[0] 
                       for img_fpath in img_list]
         
@@ -572,6 +778,13 @@ class CalcMAP:
         return
     
     def add(self, img_fpath:str, det_results:List[DetResult], anno_data:List[AnnoData]):
+        """ データ追加
+
+        Args:
+            img_fpath (str)              : 画像名（ファイルパス）
+            det_results (List[DetResult]): 検出結果
+            anno_data (List[AnnoData])   : アノテーションデータ
+        """
         img_fname = os.path.splitext(os.path.basename(img_fpath))[0]
 
         det_results_cp = copy.deepcopy(det_results)
@@ -585,6 +798,11 @@ class CalcMAP:
         return
 
     def __call__(self) -> Tuple[float, Dict[str,float]]:
+        """ mAP算出
+
+        Returns:
+            Tuple[float, Dict[str,float]]: (mAP, クラス毎のAP)
+        """
         (mAP, per_class_ap) = evaluate_map(self.predictions_, self.ground_truths_,  self.voc_classes_, self.iou_thres_)
 
         per_class_ap_dict = {cls_name:ap_val for cls_name,ap_val in zip(self.voc_classes_, per_class_ap)}
@@ -592,8 +810,16 @@ class CalcMAP:
 
 
 class SSDModel:
-
+    """ SSDモデル(VGG,mobilenet共通)
+    """
     def __init__(self, device:torch.device, voc_classes:List[str], net_type:str):
+        """ コンストラクタ
+
+        Args:
+            device (torch.device)   : デバイス(cpu or cuda)
+            voc_classes (List[str]) : クラス
+            net_type (str)          : SSD種別（vgg or mobilenet）
+        """
         self.net_type_    = net_type
         self.num_classes_ = len(voc_classes) + 1
 
@@ -647,6 +873,8 @@ def makeVocClassesTxtFpath(weight_fpath:str) -> str:
     return voc_classes_fpath
 
 class Logger:
+    """ ログ生成
+    """
     def __init__(self, is_out:bool):
         self.is_out_  = is_out
         self.outdir_  = ""
@@ -655,6 +883,16 @@ class Logger:
 
     @staticmethod
     def createOutputDir(dev_name:str, net_type:str, dir_name:str) -> str:
+        """ ログ出力ディレクトリ生成（デバイス,SSD種別をディレクトリ名に付与）
+
+        Args:
+            dev_name (str): デバイス(cpu or cuda)
+            net_type (str): SSD種別（vgg or mobilenet）
+            dir_name (str): ディレクトリ名
+
+        Returns:
+            str: 出力ディレクトリ名
+        """
         if dir_name != "":
             outdir_path = f"./output.{dev_name}.{net_type}/{dir_name}"
         else:
@@ -665,12 +903,23 @@ class Logger:
         return outdir_path
 
     def openLogFile(self, dev_name:str, net_type:str, dir_name:str, f_name:str, mode:str):
+        """ ログファイルopen（デバイス,SSD種別をディレクトリ名に付与）
+
+        Args:
+            dev_name (str)  : デバイス(cpu or cuda)
+            net_type (str)  : SSD種別（vgg or mobilenet）
+            dir_name (str)  : ディレクトリ名
+            f_name (str)    : ログファイル名
+            mode (str)      : w or r
+        """
         if self.is_out_ == True:
             self.outdir_ = Logger.createOutputDir(dev_name, net_type, dir_name)
             self.log_fp_ = open(f"{self.outdir_}/{f_name}", mode)
         return
 
     def closeLogFile(self):
+        """ ログファイルclose
+        """
         if (self.is_out_ == True) and (self.log_fp_ is not None):
             self.log_fp_.close()
             self.log_fp_ = None
@@ -682,10 +931,17 @@ class Logger:
             ret = True
         return ret
 
-# 2次元値（例：位置(x,y)）を推定するカルマンフィルタ
-#   参考: https://qiita.com/matsui_685/items/16b81bf0ad9a24c54e52
 class KalmanFilter2D:
+    """ 2次元値（例：位置(x,y)）を推定するカルマンフィルタ
+
+      参考: https://qiita.com/matsui_685/items/16b81bf0ad9a24c54e52
+    """
     def __init__(self, fps:float):
+        """ コンストラクタ
+
+        Args:
+            fps (float): frame per second [cycle/sec]
+        """
         # 観測値入力有無（一度でも観測値を入力したらTrue）
         self.is_input_measurement_ = False 
 
@@ -722,14 +978,19 @@ class KalmanFilter2D:
         return
 
     def predict(self):
-        # 予測ステップ
+        """ 予測ステップ
+        """
         if self.is_input_measurement_ == True:
             self.x_ = np.dot(self.F_, self.x_) + self.u_
             self.P_ = np.dot(np.dot(self.F_, self.P_), self.F_.T)
         return
 
     def update(self, measurement:np.ndarray):
-        # 更新ステップ
+        """ 更新ステップ
+
+        Args:
+            measurement (np.ndarray): 観測値
+        """
         if self.is_input_measurement_ == True:
 
             Z = np.array([measurement])
@@ -746,17 +1007,29 @@ class KalmanFilter2D:
         return
 
     def resetPredict(self, measurement:np.ndarray):
-        # 推定値(x,y)を観測値で上書き　※変動量成分(dx/dt, dy/dt)はリセットしない
+        """ 推定値(x,y)を観測値で上書き　※変動量成分(dx/dt, dy/dt)はリセットしない
+
+        Args:
+            measurement (np.ndarray): 観測値
+        """
         self.x_[0][0] = measurement[0]
         self.x_[1][0] = measurement[1]
         return
     
     def getEstimatedValue(self) -> np.ndarray:
-        # 推定値(x,y)を返す（変動量成分(dx/dt, dy/dt)は返さない）
+        """ 推定値(x,y)を返す（変動量成分(dx/dt, dy/dt)は返さない）
+
+        Returns:
+            np.ndarray: 推定値(x,y)
+        """
         return self.x_.reshape((4,))[:2] 
 
     def getEstimatedStdev(self) -> np.ndarray:
-        # 推定値(x,y)の標準偏差を返す
+        """ 推定値(x,y)の標準偏差を返す
+
+        Returns:
+            np.ndarray: 推定値の標準偏差(std(x), std(y))
+        """
         return np.array([math.sqrt(self.P_[0][0]), math.sqrt(self.P_[1][1])]) 
 
 # --- 単体テスト用 ここから ---
