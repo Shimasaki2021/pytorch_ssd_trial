@@ -119,6 +119,26 @@ class DrawPen:
         self.char_size_ = char_size
         return
 
+def clipCoord(coord_val:int, coord_min:int, coord_max:int) -> int:
+    """ 座標値のクリップ
+
+    Args:
+        coord_val (int): 座標値
+        coord_min (int): 最小値
+        coord_max (int): 最大値
+
+    Returns:
+        int: 座標値（クリップ後）
+    """    
+    if coord_val < coord_min:
+        ret_val = coord_min
+    elif coord_val > coord_max:
+        ret_val = coord_max
+    else:
+        ret_val = coord_val
+
+    return ret_val
+
 class ImageProc:
     """ 画像処理（クリップ、ぼかし、文字描画等） """
     def __init__(self, lu_x=0, lu_y=0, rb_x=0, rb_y=0):
@@ -154,6 +174,12 @@ class ImageProc:
             self.darea_rb_y_ == 0:
 
             self.is_no_proc_ = True
+        else:
+            if self.img_w_ > 0 and self.img_h_ > 0:
+                self.darea_lu_x_ = clipCoord(self.darea_lu_x_, 0, self.img_w_-1)
+                self.darea_lu_y_ = clipCoord(self.darea_lu_y_, 0, self.img_h_-1)
+                self.darea_rb_x_ = clipCoord(self.darea_rb_x_, 0, self.img_w_-1)
+                self.darea_rb_y_ = clipCoord(self.darea_rb_y_, 0, self.img_h_-1)
         return
 
     def initFromDet(self, img:np.ndarray, det:DetResult, min_size:int):
@@ -167,30 +193,32 @@ class ImageProc:
         if det.bbox_w_ > min_size and det.bbox_h_ > min_size:
             self.init(det.bbox_[0], det.bbox_[1], det.bbox_[2], det.bbox_[3], img)
 
-        else:
-            min_size_half = int(min_size / 2)
-            (img_h, img_w, _) = img.shape
+        # ※未使用（comment out） min_sizeになるよう範囲拡大
+        # else:
+        #     
+        #     min_size_half = int(min_size / 2)
+        #     (img_h, img_w, _) = img.shape
 
-            cx = int((det.bbox_[0] + det.bbox_[2]) / 2)
-            cy = int((det.bbox_[1] + det.bbox_[3]) / 2)
-            if cx - min_size_half < 0:
-                cx = min_size_half
-            elif cx + min_size_half >= img_w:
-                cx = img_w - min_size_half
-            else:
-                pass
-            if cy - min_size_half < 0:
-                cy = min_size_half
-            elif cy + min_size_half >= img_h:
-                cy = img_h - min_size_half
-            else:
-                pass
+        #     cx = int((det.bbox_[0] + det.bbox_[2]) / 2)
+        #     cy = int((det.bbox_[1] + det.bbox_[3]) / 2)
+        #     if cx - min_size_half < 0:
+        #         cx = min_size_half
+        #     elif cx + min_size_half >= img_w:
+        #         cx = img_w - min_size_half
+        #     else:
+        #         pass
+        #     if cy - min_size_half < 0:
+        #         cy = min_size_half
+        #     elif cy + min_size_half >= img_h:
+        #         cy = img_h - min_size_half
+        #     else:
+        #         pass
 
-            lu_x = cx - min_size_half
-            lu_y = cy - min_size_half
-            rb_x = lu_x + min_size
-            rb_y = lu_y + min_size
-            self.init(lu_x, lu_y, rb_x, rb_y, img)
+        #     lu_x = cx - min_size_half
+        #     lu_y = cy - min_size_half
+        #     rb_x = lu_x + min_size
+        #     rb_y = lu_y + min_size
+        #     self.init(lu_x, lu_y, rb_x, rb_y, img)
 
         return
 
@@ -427,7 +455,30 @@ class ImageProc:
                 img_org[det.bbox_[1]: det.bbox_[3], det.bbox_[0]: det.bbox_[2]] = s_roi
 
         return img_org
-    
+
+def calcIndexesFromBatchIdx(img_procs:List[List[ImageProc]], batch_idx:int) -> Tuple[int,int]:
+    """ バッチindexから、画像index, 検出範囲indexを算出
+
+    Args:
+        img_procs (List[List[ImageProc]]) : 検出範囲（複数） [img_num, area_num, 検出範囲]
+        batch_idx (int)                   : バッチindex
+
+    Returns:
+        Tuple[int,int]: (画像index, 検出範囲index)
+    """    
+    img_idx  = -1
+    area_idx = -1
+    batch_no = 0
+    for img_no, img_procs_in_img in enumerate(img_procs):
+        for area_no in range(len(img_procs_in_img)):
+            if batch_no == batch_idx:
+                img_idx  = img_no
+                area_idx = area_no
+                break
+            batch_no += 1
+
+    return (img_idx, area_idx)
+
 
 class MovieLoader:
     """ 動画読み込み

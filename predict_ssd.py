@@ -15,7 +15,7 @@ from tqdm import tqdm
 import torch
 import torchvision
 
-from common_ssd import ImageProc, MovieLoader
+from common_ssd import ImageProc, MovieLoader, calcIndexesFromBatchIdx
 from common_ssd import SSDModel, DetResult, AnnoData, CalcMAP, getAnnoData
 from common_ssd import DrawPen, Logger, makeVocClassesTxtFpath
 
@@ -42,7 +42,7 @@ class SSDModelDetector(SSDModel):
         # SSDネットワークモデル
         if self.net_type_ == "mb2-ssd":
             # mobilenet-v2-liteベースSSD
-            net_body  = create_mobilenetv2_ssd_lite(self.num_classes_, is_test=True)
+            net_body  = create_mobilenetv2_ssd_lite(self.num_classes_, is_test=True, device=device)
             net_body.load_state_dict(net_weights)
             self.net_ = create_mobilenetv2_ssd_lite_predictor(net_body, candidate_size=200, device=device)
         else:
@@ -119,6 +119,7 @@ class SSDModelDetector(SSDModel):
         if num_img > 0:
             num_area = len(img_procs)
 
+            print(f"\nIn predict(): img:{num_img}, area:{num_area}")
 
             imgs_trans:List[np.ndarray] = []
             for img_org in imgs:
@@ -176,6 +177,105 @@ class SSDModelDetector(SSDModel):
                     det_results[img_no] = self.nmSuppression(det_results[img_no], overlap)
 
         return det_results
+
+    def predictDetail(self, det_results:List[List[DetResult]], imgs:List[np.ndarray], min_bbox_size:int, target_class:str, conf=0.5, overlap=0.45) -> List[List[DetResult]]:
+        """ 検知（推論）実行（検出結果の中を詳細検知）
+
+        - 検出結果の矩形内に対してSSDモデルの検知を再度実行
+
+        Args:
+            det_results (List[List[DetResult]]) : 検出結果（複数） [img_num, obj_num, 検出結果]
+            imgs (List[np.ndarray])             : 画像（複数） [img_num,h,w,ch(BGR)]
+            min_bbox_size (int)                 : 矩形最小サイズ[px]
+            target_class (str)                  : 検知再実行する検出結果クラス
+            conf (float, optional)              : 信頼度conf下限閾値. Defaults to 0.5.
+            overlap (float, optional)           : 重複有無の判定閾値(IoU). Defaults to 0.45.
+
+        Returns:
+            List[List[DetResult]]: 検出結果（複数） [img_num, obj_num, 検出結果]
+        """
+        num_img  = len(imgs)
+
+        img_procs:List[List[ImageProc]] = []
+        for img_no in range(num_img):
+            img_procs.append(list())
+
+        if num_img > 0:
+            # 検出結果から検出領域を作成（target_classの枠を、検出領域として切り出し）
+            num_area = 0
+            for img_no, img_org in enumerate(imgs):
+                for det_obj in det_results[img_no]:
+                    if det_obj.class_name_ == target_class:
+                        img_proc = ImageProc()
+                        img_proc.initFromDet(img_org, det_obj, min_bbox_size)
+                        if img_proc.is_no_proc_ == False:
+                            # サイズがmin_bbox_size以上の領域のみ採用
+                            img_procs[img_no].append(copy.deepcopy(img_proc))
+                            num_area += 1
+
+            print(f"\nIn predictDetail(): img:{num_img}, area:{num_area}")
+
+            if num_area > 0:
+            # if num_area > 0 and num_area < 8:
+
+                imgs_trans:List[np.ndarray] = []
+                for img_no, img_org in enumerate(imgs):
+                    for img_proc in img_procs[img_no]:
+                        # 検出範囲切り出し
+                        img_det = img_proc.clip(img_org)
+                        # 画像前処理
+                        img_trans = self.transImage(img_det)
+                        # batch化（リストに追加（SSDモデルにあうようデータ配置組み替えもあわせて実施））
+                        imgs_trans.append(img_trans[:, :, (2, 1, 0)]) # [h,w,ch(BGR→RGB)]
+
+                # batch化（リスト→torchテンソル型に変換（SSDモデルにあうようデータ配置組み替えもあわせて実施））
+                imgs_trans_np = np.array(imgs_trans)                         # [batch_num, h, w, ch(RGB)]
+                img_batch = torch.from_numpy(imgs_trans_np).permute(0,3,1,2) # [batch_num, ch(RGB), h, w]
+                # for idx,img in enumerate(img_batch):
+                #     torchvision.utils.save_image(img, f"img_batch{idx}.jpg")
+
+                # 入力画像をデバイス(GPU or CPU)に送る
+                img_batch = img_batch.to(self.device_)
+                # print(f"img_batch = {img_batch.shape}")
+
+                # 推論実行
+                torch.backends.cudnn.benchmark = True
+                outputs = self.net_(img_batch)
+
+                # SSDモデルの出力を閾値処理（確信度confが閾値以上の結果を取り出し）
+                outputs    = outputs.cpu().detach().numpy() # (batch_num, label, top200, [conf,xmin,ymin,xmax,ymax])
+                find_index = np.where(outputs[:, :, :, 0] >= conf) # (batch_num, label, top200)
+                outputs    = outputs[find_index]
+
+                # 抽出した物体数分ループを回す
+                for i in range(len(find_index[1])):  
+
+                    batch_no:int  = find_index[0][i]    # batch index
+                    img_no, area_no = calcIndexesFromBatchIdx(img_procs, batch_no)
+
+                    if img_no >= 0 and area_no >= 0:
+                        label_no = find_index[1][i] # ラベル(クラス)番号
+
+                        if label_no > 0:  
+                            # [背景クラスでない場合] 結果を取得
+
+                            # 確信度conf
+                            sc = outputs[i][0]
+                            # クラス名
+                            cls_name = self.voc_classes_[label_no-1]
+                            # Bounding Box: 入力画像上での座標値に変換
+                            bb_i = img_procs[img_no][area_no].convBBox( outputs[i][1:] )
+
+                            if cls_name != target_class:
+                                # target_class以外の検出結果のみ採用
+                                det_results[img_no].append(DetResult(cls_name, bb_i, sc))
+
+                for img_no in range(num_img):
+                    # 元の検出枠と重複する枠を取り除く
+                    det_results[img_no] = self.nmSuppression(det_results[img_no], overlap)
+
+        return det_results
+
 
     def nmSuppression(self, det_results:List[DetResult], iou:float=0.45) -> List[DetResult]:
         """ 重複枠の削除
@@ -283,9 +383,15 @@ def main_play_movie(img_procs:List[ImageProc], num_batch:int, ssd_model:SSDModel
                 # SSD物体検出（複数フレーム分をまとめて検出）
                 time_s = time.perf_counter()
                 det_results = ssd_model.predict(img_procs, batch_imgs, conf, overlap)
+
+                # 試作: 車の枠からナンバープレートを再検出
+                det_results = ssd_model.predictDetail(det_results, batch_imgs, 100, "car", conf, overlap)
+                # det_results = ssd_model.predict(img_procs, batch_imgs, conf, overlap)
+
                 time_e = time.perf_counter()
 
                 time_per_frame = (time_e - time_s) / len(batch_imgs)
+                print(f"In main_play_movie(): fps={1.0/time_per_frame}")
 
                 # フレーム毎の処理
                 for batch_frame_no, img_org, det_result in zip(batch_frame_nos, batch_imgs, det_results):
@@ -563,6 +669,7 @@ if __name__ == "__main__":
         "ssd_model_net_type"     : "mb2-ssd",
         "ssd_model_weight_fpath" : "./weights/mb2-ssd_best_od_cars.pth", 
         "ssd_model_num_batch" : 64,
+        # "ssd_model_num_batch" : 32,
 
         # (SSDモデル) 信頼度confの足切り閾値
         "ssd_model_conf_lower_th" : 0.5,
