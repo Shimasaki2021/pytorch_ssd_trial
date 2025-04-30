@@ -474,6 +474,8 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
 
     conf:float            = cfg["ssd_model_conf_lower_th"]
     overlap:float         = cfg["ssd_model_iou_th"]
+    is_det_detail:bool    = cfg["ssd_model_is_det_detail"]
+    detail_minsize:int    = cfg["ssd_model_detail_minsize"]
     blur_kernel_size:int  = cfg["blur_kernel_size"]
     is_blur:bool          = cfg["is_blur"]
     is_debug:bool         = cfg["is_debug"]
@@ -486,6 +488,8 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
     num_batch_frame = int(num_batch / len(img_procs))
     if num_batch_frame < 1:
         num_batch_frame = 1
+
+    num_batch_real = num_batch_frame * len(img_procs)
 
     # 画像出力用フォルダ作成
     if is_debug == True:
@@ -520,7 +524,13 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
 
                 # SSD物体検出（複数フレーム分をまとめて検出）
                 time_s = time.perf_counter()
+
                 det_results = ssd_model.predict(img_procs, batch_imgs, conf, overlap)
+
+                # 車の枠からナンバープレートを再検出
+                if is_det_detail == True:
+                    det_results = ssd_model.predictDetail(det_results, batch_imgs, num_batch_real, detail_minsize, "car", conf, overlap)
+
                 time_e = time.perf_counter()
 
                 time_per_batch = (time_e - time_s) / len(batch_imgs)
@@ -684,14 +694,18 @@ if __name__ == "__main__":
 
         # (SSDモデル:VGGベース)ネットワーク種別/パラメータ/バッチ処理数(※)
         #   (※) バッチ処理数 ＝検出範囲数 x フレーム数
-        # "ssd_model_net_type"     : "vgg16-ssd",
-        # "ssd_model_weight_fpath" : "./weights/vgg16-ssd_best_od_cars.pth", 
-        # "ssd_model_num_batch" : 32,
+        # "ssd_model_net_type"        : "vgg16-ssd",
+        # "ssd_model_weight_fpath"    : "./weights/vgg16-ssd_best_od_cars.pth", 
+        # "ssd_model_num_batch"       : 32,
+        # "ssd_model_is_det_detail"   : False, # predictDetail()実行有無（実行すると処理時間は倍だが未検出小）
+        # "ssd_model_detail_minsize"  : 100,   # predictDetail()実行時の検出範囲最小サイズ[px]
 
         # (SSDモデル:mobilenetベース)ネットワーク種別/パラメータ/バッチ処理数
-        "ssd_model_net_type"     : "mb2-ssd",
-        "ssd_model_weight_fpath" : "./weights/mb2-ssd_best_od_cars.pth", 
-        "ssd_model_num_batch" : 64,
+        "ssd_model_net_type"        : "mb2-ssd",
+        "ssd_model_weight_fpath"    : "./weights/mb2-ssd_best_od_cars.pth", 
+        "ssd_model_num_batch"       : 64,
+        "ssd_model_is_det_detail"   : True, # predictDetail()実行有無（実行すると処理時間は倍だが未検出小）
+        "ssd_model_detail_minsize"  : 100,  # predictDetail()実行時の検出範囲最小サイズ[px]
 
         # (SSDモデル) 信頼度confの足切り閾値
         "ssd_model_conf_lower_th" : 0.5,

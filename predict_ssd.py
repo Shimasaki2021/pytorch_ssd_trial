@@ -181,17 +181,18 @@ class SSDModelDetector(SSDModel):
 
         return det_results
 
-    def predictDetail(self, det_results:List[List[DetResult]], imgs:List[np.ndarray], min_bbox_size:int, num_batch:int, target_class:str, conf=0.5, overlap=0.45) -> List[List[DetResult]]:
+    def predictDetail(self, det_results:List[List[DetResult]], imgs:List[np.ndarray], min_bbox_size:int, num_batch:int, area_class:str, conf=0.5, overlap=0.45) -> List[List[DetResult]]:
         """ 検知（推論）実行（検出結果の中を詳細検知）
 
-        - 検出結果(target_classのみ)の矩形内に対してSSDモデルの検知を再度実行
+        - 検出結果(area_class)の矩形内に対してSSDモデルの検知を実行
+        - 包含関係にある物体において、大きい物体から小さい物体を検出するのに有効（例：車の中からナンバープレートを検出、顔の中から目を検出etc.）
 
         Args:
             det_results (List[List[DetResult]]) : 検出結果（複数） [img_num, obj_num, 検出結果]
             imgs (List[np.ndarray])             : 画像（複数） [img_num,h,w,ch(BGR)]
             min_bbox_size (int)                 : 矩形最小サイズ[px]
             num_batch (int)                     : バッチ数（predict()実行時のバッチ数）
-            target_class (str)                  : 検知再実行する検出結果クラス
+            area_class (str)                    : 検出範囲となるクラス
             conf (float, optional)              : 信頼度conf下限閾値. Defaults to 0.5.
             overlap (float, optional)           : 重複有無の判定閾値(IoU). Defaults to 0.45.
 
@@ -205,11 +206,11 @@ class SSDModelDetector(SSDModel):
             img_procs.append(list())
 
         if num_img > 0:
-            # 検出結果から検出領域を作成（target_classの枠を、検出領域として切り出し）
+            # 検出結果から検出領域を作成（area_classの枠を、検出領域として切り出し）
             num_area = 0
             for img_no, img_org in enumerate(imgs):
                 for det_obj in det_results[img_no]:
-                    if det_obj.class_name_ == target_class:
+                    if det_obj.class_name_ == area_class:
                         img_proc = ImageProc()
                         img_proc.initFromDet(img_org, det_obj, min_bbox_size)
                         if img_proc.is_no_proc_ == False:
@@ -237,10 +238,12 @@ class SSDModelDetector(SSDModel):
                         # batch化（リストに追加（SSDモデルにあうようデータ配置組み替えもあわせて実施））
                         imgs_trans.append(img_trans[:, :, (2, 1, 0)]) # [h,w,ch(BGR→RGB)]
                 
-                # GPU実行時に処理時間を安定化させるため、batch数を揃える
-                #   → 検出範囲数がnum_batchに達するまでdummy画像（黒画像）を加える
-                while len(imgs_trans) < num_batch:
-                    imgs_trans.append(self.img_dummy_)
+                if self.device_.type != "cpu":
+                    # GPU実行時は、処理時間を安定化させるため、batch数を揃える（不揃いだと、たまに処理速度が極端に低下する）
+                    #   → 検出範囲数がnum_batchに達するまでdummy画像（黒画像）を加える
+                    # CPU実行時は、画像が増えた分だけ遅くなるので、実施しない（不揃いでも処理速度低下は発生しない）
+                    while len(imgs_trans) < num_batch:
+                        imgs_trans.append(self.img_dummy_)
 
                 # batch化（リスト→torchテンソル型に変換（SSDモデルにあうようデータ配置組み替えもあわせて実施））
                 imgs_trans_np = np.array(imgs_trans)                         # [batch_num, h, w, ch(RGB)]
@@ -280,8 +283,8 @@ class SSDModelDetector(SSDModel):
                             # Bounding Box: 入力画像上での座標値に変換
                             bb_i = img_procs[img_no][area_no].convBBox( outputs[i][1:] )
 
-                            if cls_name != target_class:
-                                # target_class以外の検出結果のみ採用
+                            if cls_name != area_class:
+                                # area_class以外の検出結果のみ採用
                                 det_results[img_no].append(DetResult(cls_name, bb_i, sc))
 
                 for img_no in range(num_img):
@@ -399,12 +402,11 @@ def main_play_movie(img_procs:List[ImageProc], num_batch:int, ssd_model:SSDModel
                 det_results = ssd_model.predict(img_procs, batch_imgs, conf, overlap)
 
                 # 試作: 車の枠からナンバープレートを再検出
-                det_results = ssd_model.predictDetail(det_results, batch_imgs, (num_batch_frame * len(img_procs)), 100, "car", conf, overlap)
+                # det_results = ssd_model.predictDetail(det_results, batch_imgs, (num_batch_frame * len(img_procs)), 100, "car", conf, overlap)
 
                 time_e = time.perf_counter()
 
                 time_per_frame = (time_e - time_s) / len(batch_imgs)
-                # print(f"In main_play_movie(): fps={1.0/time_per_frame}")
 
                 # フレーム毎の処理
                 for batch_frame_no, img_org, det_result in zip(batch_frame_nos, batch_imgs, det_results):
