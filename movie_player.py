@@ -6,7 +6,10 @@ import os
 import copy
 from typing import List,Dict,Any
 from tqdm import tqdm
+
 import torch
+import tkinter as tk
+from tkinter import filedialog
 
 from common_ssd import ImageProc, MovieLoader
 from predict_ssd import SSDModelDetector
@@ -149,43 +152,44 @@ if __name__ == "__main__":
         #   （両方有効化するとimg_procs_fixで実行）
 
         # 切り出し領域＝固定
-        # "img_procs_fix"     : [ImageProc(180, 150, 530, 500), 
-        #                        ImageProc(580, 200, 880, 500), 
-        #                        ImageProc(930, 250, 1280, 600)],
+        "img_procs_fix"     : [ImageProc(180, 150, 530, 500), 
+                               ImageProc(580, 200, 880, 500), 
+                               ImageProc(930, 250, 1280, 600)],
         # 切り出し領域＝固定（切り出ししない場合）
         # "img_procs_fix"   : [ImageProc()],
 
         # 切り出し領域＝検出結果
-        "img_procs_det_area"          : [ImageProc(0, 250, 350, 600), 
-                                         ImageProc(250, 200, 550, 500), 
-                                         ImageProc(480, 200, 780, 500), 
-                                         ImageProc(730, 200, 1030, 500), 
-                                         ImageProc(930, 250, 1280, 600)],
-        "img_procs_det_net_type"      : "mb2-ssd",
-        "img_procs_det_weight_fpath"  : "./weights/mb2-ssd_best_od_cars.pth", 
-        "img_procs_det_num_batch"     : 64,
-        "img_procs_det_area_minsize"  : 100,
-        "img_procs_det_area_class"    : "car",
-        "img_procs_det_conf_lower_th" : 0.5,
-        "img_procs_det_iou_th"        : 0.4,
+        # "img_procs_det_area"          : [ImageProc(0, 250, 350, 600), 
+        #                                  ImageProc(250, 200, 550, 500), 
+        #                                  ImageProc(480, 200, 780, 500), 
+        #                                  ImageProc(730, 200, 1030, 500), 
+        #                                  ImageProc(930, 250, 1280, 600)],
+        # "img_procs_det_net_type"      : "mb2-ssd",
+        # "img_procs_det_weight_fpath"  : "./weights/mb2-ssd_best_od_cars.pth", 
+        # "img_procs_det_num_batch"     : 64,
+        # "img_procs_det_area_minsize"  : 100,
+        # "img_procs_det_area_class"    : "car",
+        # "img_procs_det_conf_lower_th" : 0.5,
+        # "img_procs_det_iou_th"        : 0.4,
     }
 
-    if len(args) < 2:
-        print(f"Usage: {args[0]} [movie file path] ([play fps])")
-    else:
-        if len(args) >= 3:
-            cfg["play_fps"] = float(args[2])
+    if len(args) >= 2:
+        cfg["play_fps"] = float(args[1])
 
-        movie_fpath = args[1]
+    root = tk.Tk()
+    root.withdraw() # メインウィンドウは非表示
 
-        if os.path.isfile(movie_fpath) == True:
+    # ファイルダイアログでmp4ファイル選択
+    file_type = [("mp4ファイル","*.mp4")] 
+    movie_fpath = filedialog.askopenfilename(filetypes = file_type) 
 
-            if "img_procs_fix" in cfg.keys():
-                mainExtractFixArea(movie_fpath, cfg)
-            elif "img_procs_det_area" in cfg.keys():
-                mainExtractDetArea(movie_fpath, cfg)
-            else:
-                print("Error: config invalid!!")
+    if movie_fpath != "":
+        print(f"open file [{movie_fpath}]")
 
+        if "img_procs_fix" in cfg.keys():
+            mainExtractFixArea(movie_fpath, cfg)
+        elif "img_procs_det_area" in cfg.keys():
+            mainExtractDetArea(movie_fpath, cfg)
         else:
-            print(f"Error: {movie_fpath} is nothing.")
+            print("Error: config invalid!!")
+

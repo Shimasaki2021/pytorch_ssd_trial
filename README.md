@@ -146,13 +146,14 @@ https://github.com/Shimasaki2021/docker_pytorch
 
 ![labelImg例](./fig/labelImg_open_od_cars_sample.png)
 
-なお、画像を動画(mp4)から収集する場合は、movie_player.py を使って画像切り出しができます。
+なお、画像を動画(mp4)から収集する場合は、movie_player.py を使って画像切り出しができます。動画は、起動直後のダイアログウィンドウで選択します。結果は、```output.data/動画ファイル名/```以下に出力されます。
+![ファイルダイアログ例](./fig/app_autoblur_filedialog.png)
 
 ```sh
-./movie_player.py [動画(mp4)ファイルパス] ([fps])
+./movie_player.py ([fps])
 
-※実行例(動画ファイルNNF_230504-092531.mp4から、0.5fpsで画像切り出し)
-./movie_player.py data/NNF_230504-092531.mp4 0.5
+※実行例(0.5fpsで画像切り出し)
+./movie_player.py 0.5
 ```
 
 切り出し領域は、movie_player.py 末尾付近の以下を適宜編集してご利用ください。predict_ssd.pyの検出範囲と同じ設定にする必要はありません。
