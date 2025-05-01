@@ -234,7 +234,7 @@ class ImageProc:
         (self.img_h_, self.img_w_, _) = img.shape
 
         if self.is_no_proc_ == False:
-            return img[self.darea_lu_y_:self.darea_rb_y_, self.darea_lu_x_:self.darea_rb_x_]
+            return copy.deepcopy(img[self.darea_lu_y_:self.darea_rb_y_, self.darea_lu_x_:self.darea_rb_x_])
         else:
             return copy.deepcopy(img)
     
