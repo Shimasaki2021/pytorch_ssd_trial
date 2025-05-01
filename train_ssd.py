@@ -459,7 +459,7 @@ def main(cfg:Dict[str,Any]):
     else:
         # SSDモデル作成
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        print("使用デバイス：", device)
+        print(f"Using Device: {device}")
 
         ssd_model = SSDModelTrainer(device, net_type, weight_fpath, voc_classes, freeze_layer)
     

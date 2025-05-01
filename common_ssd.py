@@ -552,7 +552,7 @@ class MovieLoader:
         return (ret_batch_frame_nos, ret_batch_imgs)
 
     def __len__(self) -> int:
-        num_iter = int(self.num_cap_frame_ // self.num_batch_frame_)
+        num_iter = int(self.num_cap_frame_ // (self.num_batch_frame_ * self.frame_play_step_))
         return num_iter
 
     def getNumFrame(self) -> int:

@@ -7,19 +7,25 @@ pytorch ssdの転移学習を実行するソース一式です。
 |---|---|
 | utils/ | SSDモデル実装等のソース（モデルはVGG16ベースのSSD300）  |
 | vision/ | SSDモデル実装等のソース（モデルはmobilenet-v2-liteベースのSSD300） |
+| weights/ | パラメータファイル格納　※詳細は後述の表参照 |
+| data/od_cars_org_F00000.jpg | テストデータ（推論用画像） |
+| data/od_cars_sample/ | テストデータ（学習用画像、アノテーションデータのサンプル） |
 | common_ssd.py | 推論/学習共通部分のソース |
 | train_ssd.py | 学習実行ソース |
 | predict_ssd.py | 検知（推論）実行ソース |
 | movie_player.py | 動画(mp4)から学習用画像切り出しツール(ソース) |
 | app_carnumber_auto_blur.py | ナンバープレート自動ぼかしアプリ(ソース) |
-| data/od_cars_org_F00000.jpg | テストデータ（推論用画像） |
-| data/od_cars_sample/ | テストデータ（学習用画像、アノテーションデータのサンプル） |
-| weights/vgg16-ssd_best_od_cars.pth | 学習済みSSD(VGG16ベース)パラメータデータ(車、ナンバープレートを学習済) |
-| weights/vgg16-ssd_best_od_cars_classes.txt | vgg16-ssd_best_od_cars.pthで学習したクラス名 |
-| weights/mb2-ssd_best_od_cars.pth | 学習済みSSD(mobilenet-v2-liteベース)パラメータデータ(車、ナンバープレートを学習済) |
-| weights/mb2-ssd_best_od_cars_classes.txt | mb2-ssd_best_od_cars.pthで学習したクラス名 |
 | python_version.txt | 動作確認したpythonバージョン |
 | python_module_version.txt | 動作確認したpythonモジュールのバージョン |
+
+### weightsディレクトリ詳細
+| weightsディレクトリ内のファイル | 説明 |
+|---|---|
+| vgg16-ssd_best_od_cars.pth | 学習済みSSD(VGG16ベース)パラメータデータ(車、ナンバープレートを学習済) |
+| vgg16-ssd_best_od_cars_classes.txt | vgg16-ssd_best_od_cars.pthで学習したクラス名 |
+| mb2-ssd_best_od_cars.pth | 学習済みSSD(mobilenet-v2-liteベース)パラメータデータ(車、ナンバープレートを学習済) |
+| mb2-ssd_best_od_cars_classes.txt | mb2-ssd_best_od_cars.pthで学習したクラス名 |
+
 
 utils、vision以下のSSDソースは、以下掲載ソースをベースに、上述のpythonバージョンで動作するよう一部修正したものです。
 - utils  (VGG16ベースSSD)
@@ -50,15 +56,16 @@ python predict_ssd.py [動画(mp4) or 画像ファイルパス]
 ```
 ![実行結果例](./fig/od_cars_org_F00000_result.jpg)
 
-入力画像/動画の解像度は1280x800、検出対象は車＆ナンバープレートの想定で、predict_ssd.py末尾の以下コードで検出範囲を設定しています（車がいそうな領域を4分割）。
+入力画像/動画の解像度は1280x800、検出対象は車＆ナンバープレートの想定で、predict_ssd.py末尾の以下コードで検出範囲を設定しています（車がいそうな領域を設定）。
 
-異なる解像度の画像や、検出対象がいそうな領域が違う場合は、以下の検出範囲を適宜編集してご利用ください。現状、境界値チェックを入れれておらず、はみ出すと落ちてしまうので、ご注意ください。
+異なる解像度の画像や、検出対象がいそうな領域が違う場合は、以下の検出範囲を適宜編集してご利用ください。現状、境界値チェックを入っておらず、はみ出すと落ちてしまうので、ご注意ください。
 
-また、検知に使うSSDモデルをVGGベースにする場合は、以下ソースでコメントアウトされている「(SSDモデル:VGGベース)ネットワーク種別/パラメータ/バッチ処理数」の3行を有効化（「(SSDモデル:mobilenetベース)...」はコメントアウト）します。
+また、検知に使うSSDモデルをVGGベースにする場合は、以下ソースでコメントアウトされている「(SSDモデル:VGGベース)ネットワーク種別/パラメータ/バッチ処理数」の行を有効化（「(SSDモデル:mobilenetベース)...」はコメントアウト）します。
+
+なお、下記にある```predictDetail()```は、２段階検出処理です。大きな物体（例：車、顔etc.）の中にある小さな物体（例：ナンバープレート、目etc.）の未検出を減らす効果が期待できますが、処理速度は低下します。無効化する場合は、```ssd_model_is_det_detail```を```False```に設定します。
 
 ```python
 # predict_ssd.py抜粋（cfg）
-
 cfg = {
     # 動画再生fps (負値＝入力動画のfpsそのまま)
     "play_fps"     : -1.0,
@@ -80,23 +87,29 @@ cfg = {
 
     # (SSDモデル:VGGベース)ネットワーク種別/パラメータ/バッチ処理数(※)
     #   (※) バッチ処理数 ＝検出範囲数 x フレーム数
-    # "ssd_model_net_type"     : "vgg16-ssd",
-    # "ssd_model_weight_fpath" : "./weights/vgg16-ssd_best_od_cars.pth", 
-    # "ssd_model_num_batch" : 32,
+    # "ssd_model_net_type"        : "vgg16-ssd",
+    # "ssd_model_weight_fpath"    : "./weights/vgg16-ssd_best_od_cars.pth", 
+    # "ssd_model_num_batch"       : 32,
+    # "ssd_model_is_det_detail"   : False, # predictDetail()実行有無（実行すると処理速度は低下するが未検出小）
+    # "ssd_model_detail_minsize"  : 100,   # predictDetail()実行時の検出範囲最小サイズ[px]
+    # "ssd_model_detail_areacls"  : "car", # predictDetail()実行時の検出範囲にするクラス
 
     # (SSDモデル:mobilenetベース)ネットワーク種別/パラメータ/バッチ処理数
-    "ssd_model_net_type"     : "mb2-ssd",
-    "ssd_model_weight_fpath" : "./weights/mb2-ssd_best_od_cars.pth", 
-    "ssd_model_num_batch" : 64,
+    "ssd_model_net_type"        : "mb2-ssd",
+    "ssd_model_weight_fpath"    : "./weights/mb2-ssd_best_od_cars.pth", 
+    "ssd_model_num_batch"       : 64,
+    "ssd_model_is_det_detail"   : True,  # predictDetail()実行有無（実行すると処理速度は低下するが未検出小）
+    "ssd_model_detail_minsize"  : 100,   # predictDetail()実行時の検出範囲最小サイズ[px]
+    "ssd_model_detail_areacls"  : "car", # predictDetail()実行時の検出範囲にするクラス
 
     # (SSDモデル) 信頼度confの足切り閾値
     "ssd_model_conf_lower_th" : 0.5,
 
     # (SSDモデル) 重複枠削除する重なり率(iou)閾値
-    "ssd_model_iou_th" : 0.5,
-
+    "ssd_model_iou_th" : 0.4,
+    # (SSDモデル(評価用)) 正解枠との重なり率(iou)閾値
+    "ssd_model_eval_iou_th" : 0.4,
 }
-
 ```
 
 なお、学習済みSSD重みデータ（ssd_best_od_cars.pth）は、車を検出対象に入れているものの、側面は意図的に外してます（※）。そのため、真横の車は検出できないことがあるので、ご了承ください。
@@ -133,7 +146,7 @@ https://github.com/Shimasaki2021/docker_pytorch
 
 ![labelImg例](./fig/labelImg_open_od_cars_sample.png)
 
-画像を動画(mp4)から収集する場合は、movie_player.py を使って画像切り出しができます。
+なお、画像を動画(mp4)から収集する場合は、movie_player.py を使って画像切り出しができます。
 
 ```sh
 ./movie_player.py [動画(mp4)ファイルパス] ([fps])
@@ -144,13 +157,39 @@ https://github.com/Shimasaki2021/docker_pytorch
 
 切り出し領域は、movie_player.py 末尾付近の以下を適宜編集してご利用ください。predict_ssd.pyの検出範囲と同じ設定にする必要はありません。
 
+```img_procs_det_xxx```を有効化すれば、SSDモデル検出結果を切り出し領域にすることもできます。SSDモデル検出結果に対してアノテーションすることで、大きな物体（例：車、顔etc.）の中にある小さな物体（例：ナンバープレート、目etc.）の検出性能を強化することが可能です。学習済みパラメータが既にある場合にのみこの機能が使えます。
+
 ```python
 # movie_player.py抜粋
+cfg = {
+    # 動画再生fps (負値＝入力動画のfpsそのまま)
+    "play_fps"      : -1.0,
 
-# 切り出し領域
-img_procs = [ImageProc(180, 150, 530, 500), 
-             ImageProc(580, 200, 880, 500), 
-             ImageProc(930, 250, 1280, 600)]
+    # ※"img_procs_fix", "img_procs_det_xxx"は、どちらかのみ有効化
+    #   （両方有効化するとimg_procs_fixで実行）
+
+    # 切り出し領域＝固定
+    "img_procs_fix"     : [ImageProc(180, 150, 530, 500), 
+                           ImageProc(580, 200, 880, 500), 
+                           ImageProc(930, 250, 1280, 600)],
+    # 切り出し領域＝固定（切り出ししない場合）
+    # "img_procs_fix"   : [ImageProc()],
+
+
+    # 切り出し領域＝検出結果
+    # "img_procs_det_area"          : [ImageProc(0, 250, 350, 600), 
+    #                                   ImageProc(250, 200, 550, 500), 
+    #                                   ImageProc(480, 200, 780, 500), 
+    #                                   ImageProc(730, 200, 1030, 500), 
+    #                                   ImageProc(930, 250, 1280, 600)],
+    # "img_procs_det_net_type"      : "mb2-ssd",
+    # "img_procs_det_weight_fpath"  : "./weights/mb2-ssd_best_od_cars.pth", 
+    # "img_procs_det_num_batch"     : 64,
+    # "img_procs_det_area_minsize"  : 100,
+    # "img_procs_det_area_class"    : "car",
+    # "img_procs_det_conf_lower_th" : 0.5,
+    # "img_procs_det_iou_th"        : 0.4,
+}
 ```
 
 ### 3. 学習実行
@@ -161,7 +200,6 @@ train_ssd.pyの以下を編集します。
 
 ```python
 # train_ssd.py抜粋（cfg）
-
 cfg = {
     # 学習データを置いたディレクトリ
     "train_data_path"    : "./data/od_cars",
@@ -178,18 +216,17 @@ cfg = {
     # バッチ処理数（＝検出範囲数 x フレーム数）
     "train_batch_size" : 16,
 
-    # (SSDモデル)ネットワーク種別/ベースnet初期パラメータ/freezeレイヤー(※)
+    # (SSDモデル:VGGベース)ネットワーク種別/ベースnet初期パラメータ/freezeレイヤー(※)
     #    (※) 入力層～freeze_layer層までの重みは更新しない
     # "ssd_model_net_type"          : "vgg16-ssd",
     # "ssd_model_init_weight_fpath" : "./weights/vgg16_reducedfc.pth", 
     # "ssd_model_freeze_layer"      : 5,
 
-    # (SSDモデル)ネットワーク種別/ベースnet初期パラメータ
+    # (SSDモデル:mobilenetベース)ネットワーク種別/ベースnet初期パラメータ
     "ssd_model_net_type"          : "mb2-ssd",
     "ssd_model_init_weight_fpath" : "./weights/mb2-imagenet-71_8.pth", 
     "ssd_model_freeze_layer"      : 0,
 }
-
 ```
 
 編集後は、ターミナルで以下を実行します。
@@ -205,7 +242,7 @@ python train_ssd.py ([epoch数])
 
 学習にかかる時間は、PC環境や学習データ数に大きく依存します。
 
-参考までに、以下PC環境、学習データ数で、ssd_best_od_cars.pthを学習するのに、約3時間かかりました。
+参考までに、以下PC環境、学習データ数で、```vgg16-ssd_best_od_cars.pth```を学習するのに、約3時間かかりました。
 
 - PC環境
   - CPU: AMD Ryzen 7 3700X (3.60 GHz)
@@ -239,7 +276,6 @@ python app_carnumber_auto_blur.py
 
 ```python
 # app_carnumber_auto_blur.py抜粋（cfg）
-
 cfg = {
     # 動画再生fps (負値＝入力動画のfpsそのまま)
     "play_fps"     : -1.0,
@@ -255,6 +291,10 @@ cfg = {
     # "img_procs"    : [ImageProc(480, 200, 780, 500), 
     #                   ImageProc(730, 200, 1030, 500), 
     #                   ImageProc(930, 250, 1280, 600)], 
+
+    # 固定の矩形領域を消去
+    # "img_erase"    : [ImageProc(367, 33, 367+257, 33+100)],
+    "img_erase"    : [ImageProc()], # 消去なし
 
     # ぼかし強度(カーネルサイズ)
     "blur_kernel_size" : 10,
@@ -280,16 +320,20 @@ cfg = {
     # ナンバープレートが車に所有されているかどうかの判定閾値
     "own_car_rate_th" : 0.5,
 
-    # (SSDモデル)ネットワーク種別/パラメータ/バッチ処理数(※)
+    # (SSDモデル:VGGベース)ネットワーク種別/パラメータ/バッチ処理数(※)
     #   (※) バッチ処理数 ＝検出範囲数 x フレーム数
-    # "ssd_model_net_type"     : "vgg16-ssd",
-    # "ssd_model_weight_fpath" : "./weights/vgg16-ssd_best_od_cars.pth", 
-    # "ssd_model_num_batch" : 32,
+    # "ssd_model_net_type"        : "vgg16-ssd",
+    # "ssd_model_weight_fpath"    : "./weights/vgg16-ssd_best_od_cars.pth", 
+    # "ssd_model_num_batch"       : 32,
+    # "ssd_model_is_det_detail"   : False, # predictDetail()実行有無（実行すると処理速度は低下するが未検出小）
+    # "ssd_model_detail_minsize"  : 100,   # predictDetail()実行時の検出範囲最小サイズ[px]
 
-    # (SSDモデル)ネットワーク種別/パラメータ/バッチ処理数
-    "ssd_model_net_type"     : "mb2-ssd",
-    "ssd_model_weight_fpath" : "./weights/mb2-ssd_best_od_cars.pth", 
-    "ssd_model_num_batch" : 64,
+    # (SSDモデル:mobilenetベース)ネットワーク種別/パラメータ/バッチ処理数
+    "ssd_model_net_type"        : "mb2-ssd",
+    "ssd_model_weight_fpath"    : "./weights/mb2-ssd_best_od_cars.pth", 
+    "ssd_model_num_batch"       : 64,
+    "ssd_model_is_det_detail"   : True, # predictDetail()実行有無（実行すると処理速度は低下するが未検出小）
+    "ssd_model_detail_minsize"  : 100,  # predictDetail()実行時の検出範囲最小サイズ[px]
 
     # (SSDモデル) 信頼度confの足切り閾値
     "ssd_model_conf_lower_th" : 0.5,
@@ -298,5 +342,4 @@ cfg = {
     # "ssd_model_iou_th" : 0.5,
     "ssd_model_iou_th" : 0.4,
 }
-
 ```

@@ -631,7 +631,7 @@ def main(media_fpath:str, cfg:Dict[str,Any]):
         # SSDモデル作成
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         # device = torch.device("cpu")
-        print("使用デバイス：", device)
+        print(f"Using Device: {device}")
 
         ssd_model = SSDModelDetector(device, net_type, weight_fpath)
 

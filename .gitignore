@@ -5,10 +5,7 @@ data/od_dbg/
 data/test/
 data/od_cars.zip
 utils/__pycache__/
-output.cpu/
-output.cuda/
-output.cuda*
-output.cpu*
+output.*
 __pycache__/
 weights/*Zone.Identifier
 weights/vgg16_reducedfc.pth
