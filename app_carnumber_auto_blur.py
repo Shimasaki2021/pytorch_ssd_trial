@@ -41,9 +41,9 @@ class DetNumberPlate:
         self.frame_h_    = frame_h
         self.accum_conf_ = 0.0   # 累積信頼度（検出した信頼度confを積算）
 
-        self.obj_number_:DetResult     = None
-        self.obj_number_sub_:DetResult = None # ナンバープレート誤検出対策：誤検出のほうが信頼度が高い場合に正検出のぼかしが解けてしまう現象の対策用
-        self.obj_car_:DetResult        = None
+        self.obj_number_:DetResult            = None
+        self.obj_numbers_sub_:List[DetResult] = [] # ナンバープレート誤検出対策：誤検出のほうが信頼度が高い場合に正検出のぼかしが解けてしまう現象の対策用
+        self.obj_car_:DetResult               = None
 
         # 位置推定用カルマンフィルタ
         #   推定対象：ナンバープレート外接矩形の中心
@@ -64,7 +64,7 @@ class DetNumberPlate:
             self.obj_car_.is_det_cur_    = False
 
             # ナンバープレート誤検出対策用の物体は、次周期に持ち越さない
-            self.obj_number_sub_ = None
+            self.obj_numbers_sub_.clear()
         return
     
     def __eq__(self, other) -> bool:
@@ -91,12 +91,7 @@ class DetNumberPlate:
                     self.obj_car_    = copy.deepcopy(obj_car)
                 else:
                     # ナンバープレート誤検出対策：信頼度低いほうもとっておき、ぼかしの対象に加える（ただし、時系列処理の対象外）
-                    if self.obj_number_sub_ is None:
-                        self.obj_number_sub_ = copy.deepcopy(obj_number)
-                    elif self.obj_number_sub_.score_ < obj_number.score_:
-                        self.obj_number_sub_ = copy.deepcopy(obj_number)
-                    else:
-                        pass
+                    self.obj_numbers_sub_.append(obj_number)
 
             else:
                 # [過去周期に登録された物体の場合] 更新
@@ -461,8 +456,9 @@ class DetNumberPlateMng:
                     ret_objs.append(det_obj_new.obj_number_)
 
                     # ナンバープレート誤検出対策用の物体（車の包含有無は確認済み）も、もしあれば加える
-                    if det_obj_new.obj_number_sub_ is not None:
-                        ret_objs.append(det_obj_new.obj_number_sub_)
+                    if len(det_obj_new.obj_numbers_sub_) > 0:
+                        for obj_number_sub in det_obj_new.obj_numbers_sub_:
+                            ret_objs.append(obj_number_sub)
 
         return ret_objs
 
