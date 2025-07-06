@@ -237,7 +237,32 @@ class ImageProc:
             return copy.deepcopy(img[self.darea_lu_y_:self.darea_rb_y_, self.darea_lu_x_:self.darea_rb_x_])
         else:
             return copy.deepcopy(img)
-    
+
+    @staticmethod
+    def clipBBox(img_w:int, img_h:int, bbox:np.ndarray):
+
+        if bbox[0] < 0:
+            bbox[0] = 0
+        elif bbox[0] >= img_w:
+            bbox[0] = img_w - 1
+
+        if bbox[2] < 0:
+            bbox[2] = 0
+        elif bbox[2] >= img_w:
+            bbox[2] = img_w - 1
+
+        if bbox[1] < 0:
+            bbox[1] = 0
+        elif bbox[1] >= img_h:
+            bbox[1] = img_h - 1
+
+        if bbox[3] < 0:
+            bbox[3] = 0
+        elif bbox[3] >= img_h:
+            bbox[3] = img_h - 1
+
+        return
+
     def convBBox(self, bbox:np.ndarray) -> np.ndarray:
         """ 外接矩形（BoundingBox）を正規座標→画像座標に変換
 
@@ -262,7 +287,24 @@ class ImageProc:
                          bbox[2] + float(self.darea_lu_x_), 
                          bbox[3] + float(self.darea_lu_y_)])
         bb_i = bb_f.astype(np.int64)
+
+        ImageProc.clipBBox(self.img_w_, self.img_h_, bb_i)
         return bb_i
+
+
+    @staticmethod
+    def isValidBBox(img_org:np.ndarray, bbox:np.ndarray) -> bool:
+        (img_h, img_w, _) = img_org.shape
+
+        is_valid = True
+
+        if (bbox[0] < 0) or (img_w <= bbox[0]) or (bbox[2] < 0) or (img_w <= bbox[2]):
+            is_valid = False
+        elif (bbox[1] < 0) or (img_h <= bbox[1]) or (bbox[3] < 0) or (img_h <= bbox[3]):
+            is_valid = False
+        else:
+            is_valid = True
+        return is_valid
 
     def drawDetArea(self, img_org:np.ndarray, pen:DrawPen, area_name:str="det area") -> np.ndarray:
         """ 検出範囲の矩形を描画
@@ -445,7 +487,8 @@ class ImageProc:
             np.ndarray: 画像（処理後）
         """
         for det in det_results:
-            if (det.bbox_[2] - det.bbox_[0] > 0) and (det.bbox_[3] - det.bbox_[1] > 0):
+            if (True == ImageProc.isValidBBox(img_org, det.bbox_)) and \
+               (det.bbox_[2] - det.bbox_[0] > 0) and (det.bbox_[3] - det.bbox_[1] > 0):
 
                 s_roi = img_org[det.bbox_[1]: det.bbox_[3], det.bbox_[0]: det.bbox_[2]]
                 # print(str(det.bbox_[2] - det.bbox_[0]), str(det.bbox_[3] - det.bbox_[1]), s_roi.shape)
