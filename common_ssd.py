@@ -869,11 +869,11 @@ def evaluate_map(predictions:Dict[str,List], ground_truths:Dict[str,List], class
                 # [IoU(最大)＞閾値 かつ 正解矩形未参照] 判定＝正しい
                 true_positives.append(1)
                 gt_used[image_id][max_index] = True
-                # print(f"{image_id}, {score}, {pred_box}, true")
+                # print(f"{image_id}, {class_name}, {pred_box}, {score}, {max_iou}, true")
             else:
                 # [IoU(最大)≦閾値 または 正解矩形参照済] 判定＝誤り
                 true_positives.append(0)
-                # print(f"{image_id}, {score}, {pred_box}, false")
+                # print(f"{image_id}, {class_name}, {pred_box}, {score}, {max_iou}, false")
 
             scores.append(score)
 
@@ -1222,57 +1222,52 @@ def unitTestKalman():
 
     return
 
-def dispInput(predictions:Dict[str,List], ground_truths:Dict[str,List], class_names:List[str], iou_threshold=0.5):
-    plt.figure(figsize=(10, 10))
-    currentAxis = plt.gca()
-    for pred_list in predictions.values():
-        for pred in pred_list:
-            print(pred)
-    return
-
 def unitTestEvaluateMap():
-    arg_predictions = {"img1":[(np.array([100.0, 150.0, 195.0, 245.0]), 0.96, "car"),   #1
-                               (np.array([120.0, 130.0, 150.0, 140.0]), 0.88, "car"),   #4
-                               (np.array([120.0, 140.0, 140.0, 145.0]), 0.92, "number"),   #1n
+    # 検出結果
+    arg_predictions = {"Image1":[(np.array([100.0,  50.0, 150.0, 110.0]), 0.95, "car"),   #1
+                                 (np.array([350.0, 200.0, 500.0, 300.0]), 0.88, "car"),   #2
+                                 (np.array([350.0, 400.0, 500.0, 550.0]), 0.61, "car"),   #7
+                                 (np.array([470.0, 380.0, 650.0, 510.0]), 0.55, "car"),   #10
+                                 (np.array([120.0, 140.0, 140.0, 145.0]), 0.92, "number"),   #1n
                                ],
-                       "img2":[(np.array([300.0, 150.0, 510.0, 450.0]), 0.92, "car"),   #2
-                               (np.array([700.0, 600.0, 825.0, 720.0]), 0.84, "car"),   #5
-                               (np.array([505.0, 500.0, 525.0, 520.0]), 0.89, "car"),   #3
-                               (np.array([400.0, 350.0, 410.0, 380.0]), 0.95, "number"), #2n
-                               (np.array([750.0, 700.0, 780.0, 710.0]), 0.84, "number"), #5n
+                       "Image2":[(np.array([300.0, 250.0, 450.0, 310.0]), 0.77, "car"),   #4
+                                 (np.array([110.0, 450.0, 320.0, 230.0]), 0.65, "car"),   #6
+                                 (np.array([400.0, 350.0, 410.0, 380.0]), 0.95, "number"), #2n
+                                 (np.array([750.0, 700.0, 780.0, 710.0]), 0.84, "number"), #5n
                                ],
-                       "img3":[(np.array([510.0, 200.0, 710.0, 350.0]), 0.83, "car"),   #6
-                               (np.array([305.0,  50.0, 500.0, 200.0]), 0.80, "car"),   #7
-                               (np.array([800.0, 600.0, 850.0, 650.0]), 0.78, "car"),   #8
-                               (np.array([900.0, 700.0, 950.0, 750.0]), 0.74, "car"),   #9
-                               (np.array([100.0,   0.0, 150.0, 100.0]), 0.72, "car"),   #10
-                               (np.array([405.0,  150.0, 430.0, 160.0]), 0.70, "number"), #7n
-                               (np.array([820.0, 630.0, 840.0, 640.0]),  0.78, "number"),  #8n
+                       "Image3":[(np.array([120.0, 150.0, 250.0, 310.0]), 0.84, "car"),   #3
+                                 (np.array([450.0, 350.0, 650.0, 510.0]), 0.72, "car"),   #5
+                                 (np.array([405.0, 150.0, 430.0, 160.0]), 0.70, "number"), #7n
+                                 (np.array([820.0, 630.0, 840.0, 640.0]),  0.78, "number"),  #8n
+                               ],
+                       "Image4":[(np.array([170.0, 250.0, 320.0, 330.0]), 0.60, "car"),   #8
+                                 (np.array([350.0, 500.0, 550.0, 550.0]), 0.57, "car"),   #9
                                ],
                     }
-    arg_gt = {"img1":[(np.array([100.0, 150.0, 200.0, 250.0]), "car"),   #1
-                    #   (np.array([515.0, 410.0, 550.0, 430.0]), "car")    #4
-                      (np.array([121.0, 140.0, 141.0, 145.0]), "number"), #1n
+
+    # 正解矩形
+    arg_gt = {"Image1":[(np.array([105.0,  50.0, 150.0, 110.0]), "car"),   #1
+                        (np.array([360.0, 200.0, 505.0, 300.0]), "car"),   #2
+                        (np.array([355.0, 400.0, 510.0, 550.0]), "car"),   #7
+                        (np.array([121.0, 140.0, 141.0, 145.0]), "number"), #1n
                       ],
-              "img2":[(np.array([295.0, 150.0, 510.0, 450.0]), "car"),   #2
-                    #   (np.array([400.0, 400.0, 420.0, 420.0]), "car")    #3
+              "Image2":[(np.array([310.0, 260.0, 450.0, 305.0]), "car"),   #4
                       (np.array([505.0, 500.0, 525.0, 520.0]), "number"), #2n
                       (np.array([752.0, 701.0, 780.0, 711.0]), "number"), #5n
                       ],
-              "img3":[(np.array([505.0, 200.0, 705.0, 350.0]), "car"),   #6
-                      (np.array([305.0,  55.0, 500.0, 200.0]), "car"),   #7
-                      (np.array([100.0,   0.0, 145.0, 100.0]), "car"),   #10
+              "Image3":[(np.array([131.0, 150.0, 247.0, 310.0]), "car"),   #3
+                        (np.array([450.0, 355.0, 632.0, 510.0]), "car"),   #5
                       (np.array([400.0,  150.0, 450.0, 160.0]), "number"), #7n
                       (np.array([810.0, 630.0, 830.0, 640.0]),  "number"), #8n
+                      ],
+              "Image4":[(np.array([188.0, 250.0, 315.0, 330.0]), "car"),   #8
                       ],
             }
     arg_classes = ["car", "number"]
     arg_iou_th = 0.5
 
-    dispInput(arg_predictions, arg_gt,  arg_classes, arg_iou_th)
-
     (mAP, per_class_ap) = evaluate_map(arg_predictions, arg_gt,  arg_classes, arg_iou_th)
-    per_class_ap_dict = {cls_name:ap_val for cls_name,ap_val in zip(arg_classes, per_class_ap)}
+    per_class_ap_dict   = {cls_name:ap_val for cls_name,ap_val in zip(arg_classes, per_class_ap)}
 
     print(f"\nMean Average Precision({arg_iou_th}) = {mAP}\n")
     print(f"== Average Precision({arg_iou_th}) per class ==")
