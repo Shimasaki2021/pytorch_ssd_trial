@@ -762,95 +762,156 @@ class VocDataSetMng:
 
 
 def iou(box1, box2) -> float:
-    """IoU計算"""
+    """IOU算出
+
+    Args:
+        box1 (ArrayLike): 矩形1[左上X, 左上Y, 右下X, 右下Y]
+        box2 (ArrayLike): 矩形2[左上X, 左上Y, 右下X, 右下Y]
+
+    Returns:
+        float: 矩形1,2のIoU
+    """
+    # 積集合の面積算出
     x1 = max(box1[0], box2[0])
     y1 = max(box1[1], box2[1])
     x2 = min(box1[2], box2[2])
     y2 = min(box1[3], box2[3])
+    inter_area = max(0, x2 - x1) * max(0, y2 - y1) # 負値にならないようガード
 
-    inter_area = max(0, x2 - x1) * max(0, y2 - y1)
-    box1_area = (box1[2] - box1[0]) * (box1[3] - box1[1])
-    box2_area = (box2[2] - box2[0]) * (box2[3] - box2[1])
-
+    # 和集合の面積算出
+    box1_area  = (box1[2] - box1[0]) * (box1[3] - box1[1])
+    box2_area  = (box2[2] - box2[0]) * (box2[3] - box2[1])
     union_area = box1_area + box2_area - inter_area
+
+    # IoU＝積集合の面積／和集合の面積（和集合の面積＝0の場合は、IoU=0）
     return inter_area / union_area if union_area != 0 else 0
 
 def compute_ap(recalls, precisions) -> float:
-    """11-point interpolationのAP計算（Pascal VOC方式）"""
-    recalls = np.concatenate(([0.], recalls, [1.]))
+    """AP算出
+
+    Args:
+        recalls (ArrayLike): Recall
+        precisions (ArrayLike): Precision
+
+    Returns:
+        float: AP(Average Precision)
+    """
+    # 両端点(0,0)(1,0)を追加
+    recalls    = np.concatenate(([0.], recalls,    [1.]))
     precisions = np.concatenate(([0.], precisions, [0.]))
 
+    # P(r)補正値を算出（PR曲線が右肩下がりになるよう補正）
     for i in range(len(precisions) - 1, 0, -1):
         precisions[i - 1] = np.maximum(precisions[i - 1], precisions[i])
 
+    # Recall差分≠0 となるindexを抽出  ※Recall差分：隣接データとのRecallの差
+    #   例: recalls = [0.0, 0.3, 0.3, 0.4, 1.0]の場合、indices = [0,2,3]
     indices = np.where(recalls[1:] != recalls[:-1])[0]
-    ap = np.sum((recalls[indices + 1] - recalls[indices]) * precisions[indices + 1])
+
+    # AP = Σ P(r)補正値 * Δr  (Δr:Recall差分、Δr≠0箇所のみをサンプリング)
+    ap = np.sum(precisions[indices + 1] * (recalls[indices + 1] - recalls[indices]))
     return ap
 
 def evaluate_map(predictions:Dict[str,List], ground_truths:Dict[str,List], class_names:List[str], iou_threshold=0.5) -> Tuple[float, List[float]]:
     """ mAP算出
 
     Args:
-        predictions (Dict[str,List])    : 検出結果 ※key＝画像IDの辞書
-        ground_truths (Dict[str,List])  : 正解 ※key＝画像IDの辞書
+        predictions (Dict[str,List])    : 検出結果 ※key=画像IDの辞書。List=[外接矩形bbox,信頼度conf(score),クラス]
+        ground_truths (Dict[str,List])  : 正解 ※key=画像IDの辞書。List=[外接矩形bbox,クラス]
         class_names (List[str])         : クラス名
-        iou_threshold (float, optional) : 検出結果＝正解とみなすIoU下限閾値. Defaults to 0.5.
+        iou_threshold (float, optional) : 検出結果=正解とみなすIoU下限閾値. Defaults to 0.5.
 
     Returns:
         Tuple[float, List[float]]: (mAP, クラス毎のAP)
     """
-    aps = []
-    for class_name in class_names:
-        true_positives = []
-        scores = []
-        total_gts = 0
-        gt_used = {}
+    aps = [] # クラス毎のAP
 
-        detections = []
+    for class_name in class_names:
+        # クラス毎にAP算出
+        true_positives = [] # TP(True Positive)
+        scores         = [] # 信頼度conf
+        total_gts      = 0  # 「検出対象（正解）」の数（正解矩形数）
+        gt_used        = {} # 正解矩形の参照有無（重複参照を防止）
+        detections     = [] # 検出結果. List[Tuple(画像ID,外接矩形bbox,信頼度conf(score))]
+
         for image_id in predictions:
-            preds = [p for p in predictions[image_id] if p[2] == class_name]
+            # 正解矩形数をカウント
             gts = [g for g in ground_truths.get(image_id, []) if g[1] == class_name]
             total_gts += len(gts)
+
+            # 正解矩形の参照有無フラグを初期化
             gt_used[image_id] = [False] * len(gts)
 
+            # クラス＝class_nameの検出結果を抽出
+            preds = [p for p in predictions[image_id] if p[2] == class_name]
             for p in preds:
-                detections.append((image_id, p[0], p[1]))  # (image_id, bbox, score)
+                detections.append((image_id, p[0], p[1]))  # (画像ID, 外接矩形bbox, 信頼度conf(score))
 
-        detections.sort(key=lambda x: -x[2])  # スコア順
+        # 検出結果を信頼度が大きい順にソート
+        detections.sort(key=lambda x: -x[2])
 
         for image_id, pred_box, score in detections:
-            gts = [g for g in ground_truths.get(image_id, []) if g[1] == class_name]
-            ious = [iou(pred_box, gt[0]) for gt in gts]
+            # 検出結果毎に、正しいかどうかの判定
 
-            max_iou = 0
+            #   現在処理中のクラスclass_nameの正解矩形を取り出し、検出矩形pred_boxとのIoUを算出
+            gts  = [g for g in ground_truths.get(image_id, []) if g[1] == class_name]
+            ious = [iou(pred_box, gt[0]) for gt in gts] # gt[0]:正解矩形, gt[1]:クラス
+
+            #   IoU最大値を算出
+            max_iou   =  0
             max_index = -1
             for idx, iou_val in enumerate(ious):
                 if iou_val > max_iou:
-                    max_iou = iou_val
+                    max_iou   = iou_val
                     max_index = idx
 
             if max_iou >= iou_threshold and not gt_used[image_id][max_index]:
+                # [IoU(最大)＞閾値 かつ 正解矩形未参照] 判定＝正しい
                 true_positives.append(1)
                 gt_used[image_id][max_index] = True
+                # print(f"{image_id}, {score}, {pred_box}, true")
             else:
+                # [IoU(最大)≦閾値 または 正解矩形参照済] 判定＝誤り
                 true_positives.append(0)
+                # print(f"{image_id}, {score}, {pred_box}, false")
+
             scores.append(score)
 
         if total_gts == 0:
             aps.append(0)
             continue
 
-        tp = np.array(true_positives)
+        # TP,FP算出
+        #   TP(tp_cumsum)：「正しい」判定の数をカウント(true_positivesの1の数をカウント)
+        #   FP(fp_cumsum)：「誤り」判定の数をカウント(fp（true_positivesを0,1反転）の1の数をカウント)
+
+        #   ※tp,fpは、個々の検出結果に対する値（正しいかどうかの判定結果）
+        tp = np.array(true_positives) 
         fp = 1 - tp
+
+        #   ※TP(tp_cumsum)、FP(fp_cumsum)は、信頼度閾値Cnの検出結果集合に対する値
+        #     例： tp_cumsum[2]: 検出結果[0]～[2]の集合(※)のTP  (※)信頼度閾値Cn＝検出結果[2]の信頼度 で物体検出した検出結果集合
         tp_cumsum = np.cumsum(tp)
         fp_cumsum = np.cumsum(fp)
 
-        recalls = tp_cumsum / total_gts
+        # Precision, Recall算出
+        #   ※precisions、recallsも、信頼度閾値Cnの検出結果集合に対する値
+        #     例：precisions[2]: 検出結果[0]～[2]の集合のprecision
+        recalls    = tp_cumsum / total_gts
         precisions = tp_cumsum / (tp_cumsum + fp_cumsum)
+
+        # AP算出
         ap = compute_ap(recalls, precisions)
         aps.append(ap)
 
+        # print(f"tp={tp}, fp={fp}, total_gts={total_gts}")
+        # print(f"tp_cumsum={tp_cumsum}, fp_cumsum={fp_cumsum}")
+        # print(f"precisions={precisions}")
+        # print(f"recalls={recalls}")
+
+    # mAP算出
     mAP = np.mean(aps)
+
     return mAP, aps
 
 class CalcMAP:
@@ -1161,6 +1222,66 @@ def unitTestKalman():
 
     return
 
+def dispInput(predictions:Dict[str,List], ground_truths:Dict[str,List], class_names:List[str], iou_threshold=0.5):
+    plt.figure(figsize=(10, 10))
+    currentAxis = plt.gca()
+    for pred_list in predictions.values():
+        for pred in pred_list:
+            print(pred)
+    return
+
+def unitTestEvaluateMap():
+    arg_predictions = {"img1":[(np.array([100.0, 150.0, 195.0, 245.0]), 0.96, "car"),   #1
+                               (np.array([120.0, 130.0, 150.0, 140.0]), 0.88, "car"),   #4
+                               (np.array([120.0, 140.0, 140.0, 145.0]), 0.92, "number"),   #1n
+                               ],
+                       "img2":[(np.array([300.0, 150.0, 510.0, 450.0]), 0.92, "car"),   #2
+                               (np.array([700.0, 600.0, 825.0, 720.0]), 0.84, "car"),   #5
+                               (np.array([505.0, 500.0, 525.0, 520.0]), 0.89, "car"),   #3
+                               (np.array([400.0, 350.0, 410.0, 380.0]), 0.95, "number"), #2n
+                               (np.array([750.0, 700.0, 780.0, 710.0]), 0.84, "number"), #5n
+                               ],
+                       "img3":[(np.array([510.0, 200.0, 710.0, 350.0]), 0.83, "car"),   #6
+                               (np.array([305.0,  50.0, 500.0, 200.0]), 0.80, "car"),   #7
+                               (np.array([800.0, 600.0, 850.0, 650.0]), 0.78, "car"),   #8
+                               (np.array([900.0, 700.0, 950.0, 750.0]), 0.74, "car"),   #9
+                               (np.array([100.0,   0.0, 150.0, 100.0]), 0.72, "car"),   #10
+                               (np.array([405.0,  150.0, 430.0, 160.0]), 0.70, "number"), #7n
+                               (np.array([820.0, 630.0, 840.0, 640.0]),  0.78, "number"),  #8n
+                               ],
+                    }
+    arg_gt = {"img1":[(np.array([100.0, 150.0, 200.0, 250.0]), "car"),   #1
+                    #   (np.array([515.0, 410.0, 550.0, 430.0]), "car")    #4
+                      (np.array([121.0, 140.0, 141.0, 145.0]), "number"), #1n
+                      ],
+              "img2":[(np.array([295.0, 150.0, 510.0, 450.0]), "car"),   #2
+                    #   (np.array([400.0, 400.0, 420.0, 420.0]), "car")    #3
+                      (np.array([505.0, 500.0, 525.0, 520.0]), "number"), #2n
+                      (np.array([752.0, 701.0, 780.0, 711.0]), "number"), #5n
+                      ],
+              "img3":[(np.array([505.0, 200.0, 705.0, 350.0]), "car"),   #6
+                      (np.array([305.0,  55.0, 500.0, 200.0]), "car"),   #7
+                      (np.array([100.0,   0.0, 145.0, 100.0]), "car"),   #10
+                      (np.array([400.0,  150.0, 450.0, 160.0]), "number"), #7n
+                      (np.array([810.0, 630.0, 830.0, 640.0]),  "number"), #8n
+                      ],
+            }
+    arg_classes = ["car", "number"]
+    arg_iou_th = 0.5
+
+    dispInput(arg_predictions, arg_gt,  arg_classes, arg_iou_th)
+
+    (mAP, per_class_ap) = evaluate_map(arg_predictions, arg_gt,  arg_classes, arg_iou_th)
+    per_class_ap_dict = {cls_name:ap_val for cls_name,ap_val in zip(arg_classes, per_class_ap)}
+
+    print(f"\nMean Average Precision({arg_iou_th}) = {mAP}\n")
+    print(f"== Average Precision({arg_iou_th}) per class ==")
+
+    for cls_name, ap_val in per_class_ap_dict.items():
+        print(f"{cls_name}: {ap_val}")
+    return
+
 if __name__ == "__main__":
-    # 単体テスト: KalmanFilter2D
-    unitTestKalman()
+    # unitTestKalman() # 単体テスト: KalmanFilter2D
+    unitTestEvaluateMap() # 単体テスト: evaluate_map()
+
