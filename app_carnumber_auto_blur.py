@@ -494,6 +494,8 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
     is_debug:bool         = cfg["is_debug"]
     is_output_movie:bool  = cfg["is_output_movie"]
     is_output_image:bool  = cfg["is_output_image"]
+    is_disp_debug:bool    = cfg["is_disp_debug"]
+    is_output_debug:bool  = cfg["is_output_debug"]
     same_cur_iou_th:float = cfg["same_cur_iou_th"]
     own_car_rate_th:float = cfg["own_car_rate_th"]
     num_batch:int         = cfg["ssd_model_num_batch"]
@@ -505,7 +507,7 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
     num_batch_real = num_batch_frame * len(img_procs)
 
     # 画像出力用フォルダ作成
-    if is_debug == True:
+    if (is_debug == True) and (is_output_debug == True):
         output_imgdir_name = os.path.splitext(os.path.basename(movie_fpath))[0] + ".dbg"
     else:
         output_imgdir_name = os.path.splitext(os.path.basename(movie_fpath))[0] + ".blur"
@@ -578,39 +580,54 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
                             img_org = img_erase_rect.eraseRectArea(img_org, True)
 
                     # Debug表示
+                    img_debug = img_org.copy()
+
                     if is_debug == True:
                         # 検出結果（車）を追加取得
                         det_numbers += det_numbers_mng.getCars() 
 
                         # 検出範囲を描画
                         for img_proc in img_procs:
-                            img_org = img_proc.drawDetArea(img_org, DrawPen((0,128,0), 1, 0.4))
+                            img_debug = img_proc.drawDetArea(img_debug, DrawPen((0,128,0), 1, 0.4))
                         # 消去範囲を描画
                         for img_erase_rect in img_erase_rects:
-                            img_org = img_erase_rect.drawDetArea(img_org, DrawPen((0,128,128), 1, 0.4), "erase area")
+                            img_debug = img_erase_rect.drawDetArea(img_debug, DrawPen((0,128,128), 1, 0.4), "erase area")
 
                         # 検出結果を描画
-                        img_org = ImageProc.drawResultDet(img_org, det_result,  DrawPen((255,255,255), 1, 0.4))
-                        img_org = ImageProc.drawResultDet(img_org, det_numbers, DrawPen((0,255,0), 1, 0.4))
+                        img_debug = ImageProc.drawResultDet(img_debug, det_result,  DrawPen((255,255,255), 1, 0.4))
+                        img_debug = ImageProc.drawResultDet(img_debug, det_numbers, DrawPen((0,255,0), 1, 0.4))
 
                         # FPS等を描画
-                        img_org = ImageProc.drawResultSummary(img_org, batch_frame_no, num_frame, 
-                                                              ssd_model.device_.type, 
-                                                              ssd_model.net_type_,
-                                                              time_per_batch,
-                                                              DrawPen((255,255,255), 2, 0.6))
+                        img_debug = ImageProc.drawResultSummary(img_debug, batch_frame_no, num_frame, 
+                                                                ssd_model.device_.type, 
+                                                                ssd_model.net_type_,
+                                                                time_per_batch,
+                                                                DrawPen((255,255,255), 2, 0.6))
+                        
+                        if is_output_debug == False:
+                            draw_pen = DrawPen((0,255,255), 2, 0.5)
+                            ImageProc.drawText(img_debug, "Debug info is nothing in output(image/movie)..", (15, 35), draw_pen.char_size_, draw_pen.col_, draw_pen.thick_, True)
 
                     # 画像保存
                     if is_output_image == True:
                         frame_img_fpath = f"{output_imgdir_path}/F{batch_frame_no:05}.jpg" 
-                        cv2.imwrite(frame_img_fpath, img_org)
+                        if is_output_debug == True:
+                            cv2.imwrite(frame_img_fpath, img_debug)
+                        else:
+                            cv2.imwrite(frame_img_fpath, img_org)
 
                     # 動画出力
                     if out_movie is not None:
-                        out_movie.write(img_org)
+                        if is_output_debug == True:
+                            out_movie.write(img_debug)
+                        else:
+                            out_movie.write(img_org)
                     
                     # 表示
-                    cv2.imshow(output_imgdir_name, img_org)
+                    if is_disp_debug == True:
+                        cv2.imshow(output_imgdir_name, img_debug)
+                    else:
+                        cv2.imshow(output_imgdir_name, img_org)
 
                     # key = cv2.waitKey(int(1000.0 / play_fps)) & 0xFF
                     key = cv2.waitKey(int(100.0 / play_fps)) & 0xFF
@@ -687,14 +704,19 @@ if __name__ == "__main__":
         "is_blur"      : True,      # ぼかしを入れる
         # "is_blur"      : False,     # (debug) ぼかしを入れない
 
-        "is_debug"     : False,     # 検出枠表示なし
-        # "is_debug"     : True,      # (debug) 検出枠（時系列処理された枠）を表示
+        # "is_debug"     : False,       # 検出枠出力なし
+        "is_debug"     : True,      # (debug) 検出枠（時系列処理された枠）出力あり
 
         "is_output_movie" : True,   # 結果を動画出力
         # "is_output_movie" : False,  # (debug) 動画出力しない
 
         # "is_output_image" : True,   # （debug) 結果を画像（フレーム毎）出力
         "is_output_image" : False,  # 画像出力しない
+
+        "is_disp_debug": True,        # ウィンドウに検出枠表示あり(※is_debug==True時のみ有効)
+        # "is_disp_debug": True,        # ウィンドウに検出枠表示なし
+        # "is_output_debug": True,      # 動画or画像出力に検出枠表示あり(※is_debug==True時のみ有効)
+        "is_output_debug": False,     # 動画or画像出力に検出枠表示なし
 
         # (トラッキング) 検出時の、累積信頼度の上限（これ以上は累積信頼度を上昇させない）
         "ACCUM_CONF_MAX" : 10.0,
