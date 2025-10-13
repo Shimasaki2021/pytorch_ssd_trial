@@ -13,7 +13,7 @@ pytorch ssdの転移学習を実行するソース一式です。
 | common_ssd.py | 推論/学習共通部分のソース |
 | train_ssd.py | 学習実行ソース |
 | predict_ssd.py | 検知（推論）実行ソース |
-| movie_player.py | 動画(mp4)から学習用画像切り出しツール(ソース) |
+| train_image_extractor.py | 動画(mp4)から学習用画像切り出しツール(ソース) |
 | app_carnumber_auto_blur.py | ナンバープレート自動ぼかしアプリ(ソース) |
 | python_version.txt | 動作確認したpythonバージョン |
 | python_module_version.txt | 動作確認したpythonモジュールのバージョン |
@@ -136,7 +136,7 @@ cfg = {
 
 検出対象が映っている画像をできるだけたくさん集め、検出対象を囲む枠をxmlファイルで作成します。私は、labelImgで作成しました。
 
-学習済みSSD重みデータ（weights/ssd_best_od_cars.pth）を学習したときのデータの一部をdata/od_cars_sample/　に置きましたので、参考にしていただけたらと思います（ナンバープレートが映った画像が多く含まれるので全部は公開できません。。）。
+学習済みSSD重みデータ（weights/ssd_best_od_cars.pth）を学習したときのデータの一部をdata/od_cars_sample/　に置きましたので、参考にしていただけたらと思います（ナンバープレートが映った画像が多く含まれるので全部は公開できません）。
 
 data/od_cars_sampleは、labelImgでopenすればアノテーション結果を確認／編集できます（下図）。xmlファイルにはファイルの絶対パスが書かれてますが、このパス以外に置いても問題なく開けます。
 
@@ -146,52 +146,25 @@ https://github.com/Shimasaki2021/docker_pytorch
 
 ![labelImg例](./fig/labelImg_open_od_cars_sample.png)
 
-なお、画像を動画(mp4)から収集する場合は、movie_player.py を使って画像切り出しができます。動画は、起動直後のダイアログウィンドウで選択します。結果は、```output.data/動画ファイル名/```以下に出力されます。
-![ファイルダイアログ例](./fig/app_autoblur_filedialog.png)
+なお、画像を動画(mp4)から収集する場合は、train_image_extractor.py を使って画像切り出しができます。
 
 ```sh
-./movie_player.py ([fps])
+# ubuntuターミナルの場合（※実行できない場合は、chmod +xで実行権限を付与）
+./train_image_extractor.py
 
-※実行例(0.5fpsで画像切り出し)
-./movie_player.py 0.5
+# Anaconda Powershell Promptの場合
+python train_image_extractor.py
 ```
 
-切り出し領域は、movie_player.py 末尾付近の以下を適宜編集してご利用ください。predict_ssd.pyの検出範囲と同じ設定にする必要はありません。
+アプリを起動し、動画をコマ送り再生しながら、切り出したいフレーム＆領域をマウスクリックで選択します（下図例。黄色枠が選択した領域）。このアプリ上でSSDモデル検出を実行すれば（detectボタン押下）検出結果が重畳されるので、それを見ながら、再学習が必要なフレーム＆領域を選択できます。領域には、固定領域（緑枠）のほか、SSDモデル検出結果（白枠）も指定できます。
 
-```img_procs_det_xxx```を有効化すれば、SSDモデル検出結果を切り出し領域にすることもできます。SSDモデル検出結果に対してアノテーションすることで、大きな物体（例：車、顔etc.）の中にある小さな物体（例：ナンバープレート、目etc.）の検出性能を強化することが可能です。学習済みパラメータが既にある場合にのみこの機能が使えます。
+結果は、```output.data/動画ファイル名/```以下に、選択した領域の画像が出力されます。画像の他、SSDモデル検出結果を「正解枠」としたxmlファイルも出力されます（SSDモデル検出実行時のみ）。
 
-```python
-# movie_player.py抜粋
-cfg = {
-    # 動画再生fps (負値＝入力動画のfpsそのまま)
-    "play_fps"      : -1.0,
+出力結果のディレクトリは、labelImgでOpenしてそのままアノテーション作業に入れます。
 
-    # ※"img_procs_fix", "img_procs_det_xxx"は、どちらかのみ有効化
-    #   （両方有効化するとimg_procs_fixで実行）
-
-    # 切り出し領域＝固定
-    "img_procs_fix"     : [ImageProc(180, 150, 530, 500), 
-                           ImageProc(580, 200, 880, 500), 
-                           ImageProc(930, 250, 1280, 600)],
-    # 切り出し領域＝固定（切り出ししない場合）
-    # "img_procs_fix"   : [ImageProc()],
+![train_image_extractor.py実行例](./fig/fig_snap_train_image_extractor.png)
 
 
-    # 切り出し領域＝検出結果
-    # "img_procs_det_area"          : [ImageProc(0, 250, 350, 600), 
-    #                                   ImageProc(250, 200, 550, 500), 
-    #                                   ImageProc(480, 200, 780, 500), 
-    #                                   ImageProc(730, 200, 1030, 500), 
-    #                                   ImageProc(930, 250, 1280, 600)],
-    # "img_procs_det_net_type"      : "mb2-ssd",
-    # "img_procs_det_weight_fpath"  : "./weights/mb2-ssd_best_od_cars.pth", 
-    # "img_procs_det_num_batch"     : 64,
-    # "img_procs_det_area_minsize"  : 100,
-    # "img_procs_det_area_class"    : "car",
-    # "img_procs_det_conf_lower_th" : 0.5,
-    # "img_procs_det_iou_th"        : 0.4,
-}
-```
 
 ### 3. 学習実行
 

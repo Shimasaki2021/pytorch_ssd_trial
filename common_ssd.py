@@ -46,6 +46,17 @@ class DetResult:
         return np.array([(self.bbox_[0] + self.bbox_[2])/2, 
                          (self.bbox_[1] + self.bbox_[3])/2])
 
+    def isInArea(self, loc_x:int, loc_y:int) -> bool:
+        is_in_area = False
+        if      (self.bbox_[0] <= loc_x) \
+            and (self.bbox_[1] <= loc_y) \
+            and (self.bbox_[2] >= loc_x) \
+            and (self.bbox_[3] >= loc_y):
+
+            is_in_area = True
+
+        return is_in_area
+    
     def __str__(self) -> str:
         return f"({self.class_name_},{self.bbox_},{self.score_},{self.is_det_cur_})"
 
@@ -222,6 +233,10 @@ class ImageProc:
 
         return
 
+    def getBBox(self) -> np.ndarray:
+        bbox = np.array([self.darea_lu_x_, self.darea_lu_y_, self.darea_rb_x_, self.darea_rb_y_])
+        return bbox
+
     def clip(self, img:np.ndarray) -> np.ndarray:
         """ クリップ
 
@@ -305,6 +320,18 @@ class ImageProc:
         else:
             is_valid = True
         return is_valid
+
+    def isInArea(self, loc_x:int, loc_y:int) -> bool:
+        is_in_area = False
+
+        if      (self.darea_lu_x_ <= loc_x) \
+            and (self.darea_rb_x_ >= loc_x) \
+            and (self.darea_lu_y_ <= loc_y) \
+            and (self.darea_rb_y_ >= loc_y):
+
+            is_in_area = True
+
+        return is_in_area
 
     def drawDetArea(self, img_org:np.ndarray, pen:DrawPen, area_name:str="det area") -> np.ndarray:
         """ 検出範囲の矩形を描画
@@ -402,21 +429,40 @@ class ImageProc:
             np.ndarray: 画像（描画後）
         """
         for det in det_results:
-            display_txt = f"{det.class_name_}:{det.score_:.2f}"
+            img_org = ImageProc.drawResultDetOne(img_org, det, pen)
+            # display_txt = f"{det.class_name_}:{det.score_:.2f}"
 
-            # 検出結果を描画
-            cv2.rectangle(img_org, (det.bbox_[0], det.bbox_[1]), 
-                                   (det.bbox_[2], det.bbox_[3]), 
-                                   pen.col_, pen.thick_*2)
+            # # 検出結果を描画
+            # cv2.rectangle(img_org, (det.bbox_[0], det.bbox_[1]), 
+            #                        (det.bbox_[2], det.bbox_[3]), 
+            #                        pen.col_, pen.thick_*2)
             
-            loc_txt_y = det.bbox_[1]-7
-            if loc_txt_y < 10:
-                loc_txt_y = det.bbox_[3]-7
+            # loc_txt_y = det.bbox_[1]-7
+            # if loc_txt_y < 10:
+            #     loc_txt_y = det.bbox_[3]-7
             
-            ImageProc.drawText(img_org, display_txt, 
-                                        (det.bbox_[0], loc_txt_y), 
-                                        pen.char_size_, pen.col_, pen.thick_, True)
+            # ImageProc.drawText(img_org, display_txt, 
+            #                             (det.bbox_[0], loc_txt_y), 
+            #                             pen.char_size_, pen.col_, pen.thick_, True)
 
+        return img_org
+
+    @staticmethod
+    def drawResultDetOne(img_org:np.ndarray, det:DetResult, pen:DrawPen) -> np.ndarray:
+        display_txt = f"{det.class_name_}:{det.score_:.2f}"
+
+        # 検出結果を描画
+        cv2.rectangle(img_org, (det.bbox_[0], det.bbox_[1]), 
+                                (det.bbox_[2], det.bbox_[3]), 
+                                pen.col_, pen.thick_*2)
+        
+        loc_txt_y = det.bbox_[1]-7
+        if loc_txt_y < 10:
+            loc_txt_y = det.bbox_[3]-7
+        
+        ImageProc.drawText(img_org, display_txt, 
+                                    (det.bbox_[0], loc_txt_y), 
+                                    pen.char_size_, pen.col_, pen.thick_, True)
         return img_org
 
     @staticmethod
@@ -525,19 +571,48 @@ def calcIndexesFromBatchIdx(img_procs:List[List[ImageProc]], batch_idx:int) -> T
 
     return (img_idx, area_idx)
 
-
 class MovieLoader:
     """ 動画読み込み
     """
-    def __init__(self, movie_fpath:str, play_fps:float, num_batch_frame:int):
+    def __init__(self, movie_fpath:str = None, play_fps=-1.0, num_batch_frame=1):
         """ コンストラクタ
 
         Args:
-            movie_fpath (str)    : 動画ファイルパス
-            play_fps (float)     : 再生速度(fps)
-            num_batch_frame (int): 一度に読み込む（バッチ処理する）フレーム数[frame/cycle]
+            movie_fpath (str, optional)    : 動画ファイルパス Defaults to None.
+            play_fps (float, optional)     : 再生速度(fps). Defaults to -1.0.
+            num_batch_frame (int, optional): 一度に読み込む（バッチ処理する）フレーム数[frame/cycle]. Defaults to 1.
+        """
+        self.cap_:cv2.VideoCapture = None
+        self.cur_frame_no_    = 0
+        self.num_cap_frame_   = 0
+        self.play_fps_        = play_fps
+        self.num_batch_frame_ = num_batch_frame
+        self.frame_play_step_ = 1
+
+        if movie_fpath is not None:
+            self.load(movie_fpath, num_batch_frame, play_fps)
+        return
+
+    def release(self):
+        self.cap_.release()
+        self.cur_frame_no_    = 0
+        self.num_cap_frame_   = 0
+        self.play_fps_        = 0.0
+        self.num_batch_frame_ = 0
+        self.frame_play_step_ = 1
+        return
+    
+    def load(self, movie_fpath:str, num_batch_frame=1, play_fps=-1.0):
+        """ ロード
+
+        Args:
+            movie_fpath (str)              : 動画ファイルパス
+            num_batch_frame (int, optional): 一度に読み込む（バッチ処理する）フレーム数[frame/cycle]. Defaults to 1.
+            play_fps (float, optional)     : 再生速度(fps). Defaults to -1.0.
         """
         # 入力動画読み込み
+        if self.cap_ is not None:
+            self.cap_.release()
         self.cap_ = cv2.VideoCapture(movie_fpath)
 
         self.num_cap_frame_ = int(self.cap_.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -558,6 +633,12 @@ class MovieLoader:
         # 現在のフレーム番号
         self.cur_frame_no_ = 0
         return
+    
+    def isOpened(self) -> bool:
+        ret = False
+        if self.cap_ is not None:
+            ret = self.cap_.isOpened()
+        return ret
 
     def __iter__(self):
         return self
@@ -609,7 +690,32 @@ class MovieLoader:
     def getPlayFps(self) -> float:
         return self.play_fps_
 
+    def resetIter(self):
+        self.setCurFrame(0)
+        return
 
+    def setCurFrame(self, frame_no:int):
+        self.cur_frame_no_ = frame_no
+        self.cap_.set(cv2.CAP_PROP_POS_FRAMES, float(self.cur_frame_no_))
+        return
+    
+    def getCurFrame(self) -> Tuple[bool, np.ndarray]:
+        (ret, img) = self.cap_.read()
+        return (ret, img)
+
+    def nextCurFrame(self) -> bool:
+        next_frame = self.cur_frame_no_ + 1
+        is_end     = (next_frame >= self.num_cap_frame_)
+
+        self.cur_frame_no_ = min(next_frame, self.num_cap_frame_ - 1)
+        return is_end
+
+    def prevCurFrame(self) -> bool:
+        prev_frame = self.cur_frame_no_ - 1
+        is_start   = (prev_frame < 0)
+
+        self.cur_frame_no_ = max(prev_frame, 0)
+        return is_start
 
 class VocDataSetMng:
     """ VOCデータセット管理
