@@ -18,3 +18,4 @@ test/
 test.ipynb
 test2.ipynb
 test.pu
+data/*.zip

@@ -743,7 +743,8 @@ class VocDataSetMng:
         # データのリストを取得
         self.data_path_ = data_path
 
-        filename_list_all = [os.path.split(f)[1].split(".")[0] for f in glob.glob(f"{data_path}/*.xml")]
+        # filename_list_all = [os.path.split(f)[1].split(".")[0] for f in glob.glob(f"{data_path}/*.xml")]
+        filename_list_all = [os.path.splitext(os.path.basename(f))[0] for f in glob.glob(f"{data_path}/*.xml")]
 
         # objectがないxmlをファイルリストから除外(difficult設定されているobjectはカウント対象外)
         #  ∵VOCDataset::pull_item()のanno_list[:, :4]で落ちる
