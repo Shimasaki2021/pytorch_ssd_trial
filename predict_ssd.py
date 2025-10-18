@@ -541,7 +541,8 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, cfg:Dict[str,Any
 
     # 入力画像ファイルリスト読み込み
     parse_anno = Anno_xml2list(ssd_model.voc_classes_)
-    val_file_all  = [os.path.split(f)[1].split(".")[0] for f in glob.glob(f"{img_dir}/*.xml")]
+    # val_file_all  = [os.path.split(f)[1].split(".")[0] for f in glob.glob(f"{img_dir}/*.xml")]
+    val_file_all = [os.path.splitext(os.path.basename(f))[0] for f in glob.glob(f"{img_dir}/*.xml")]
     val_file_list = [f for f in val_file_all if parse_anno.isExistObject(f"{img_dir}/{f}.xml") == True]
 
     calc_map:CalcMAP = None
