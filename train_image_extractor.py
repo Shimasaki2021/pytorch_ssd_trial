@@ -421,6 +421,14 @@ class VPStatus:
 
         return is_change_state
 
+class CanvasPaintEventArg:
+    def __init__(self, frame_no:int, frame_img:np.ndarray = None):
+        self.frame_no_  = frame_no
+        self.frame_img_:np.ndarray = None
+        if frame_img is not None:
+            self.frame_img_ = copy.deepcopy(frame_img)
+        return
+
 class VideoPlayer:
 
     BTN_LABEL_OPENMOVIE = "open movie"
@@ -458,6 +466,10 @@ class VideoPlayer:
         self.canvas_.pack(padx=10, pady=10)
         self.canvas_.bind("<Button-1>", self.onMouseLeftClickCanvas)  # マウス左クリック
         self.canvas_.bind("<Button-3>", self.onMouseRightClickCanvas) # マウス右クリック
+
+        self.canvas_event_lock_ = threading.Lock()
+        self.canvas_event_arg_  = CanvasPaintEventArg(0)
+        self.canvas_.bind("<<PaintFrame>>", self.onPaintFrame)
 
         # コントロールボタン
         control_frame = ttk.Frame(self.root_)
@@ -652,6 +664,25 @@ class VideoPlayer:
             self.showFrame(self.movie_.cur_frame_no_)
         return
     
+    def onPaintFrame(self, event:tk.Event):
+        frame_no = 0
+        frame_img:np.ndarray = None
+
+        with self.canvas_event_lock_:
+            frame_no = self.canvas_event_arg_.frame_no_
+            if self.canvas_event_arg_.frame_img_ is not None:
+                frame_img = copy.deepcopy(self.canvas_event_arg_.frame_img_)
+
+        self.showFrame(frame_no, frame_img)
+        return
+    
+    def sendPaintFrameEvent(self, frame_no:int, frame_img:np.ndarray = None):
+        with self.canvas_event_lock_:
+            self.canvas_event_arg_ = CanvasPaintEventArg(frame_no, frame_img)
+        
+        self.canvas_.event_generate("<<PaintFrame>>")
+        return 
+
     def showFrame(self, frame_index:int, frame:np.ndarray=None):
         if self.movie_.isOpened() == True:
             
@@ -749,7 +780,8 @@ class VideoPlayer:
         while (is_end == False) and (self.status_ == VPStatus.StDef.PLAYING_):
 
             is_end = self.movie_.nextCurFrame()
-            self.showFrame(self.movie_.cur_frame_no_)
+
+            self.sendPaintFrameEvent(self.movie_.cur_frame_no_)
             time.sleep(sleep_time_sec)
 
         # 再生終了
@@ -787,7 +819,8 @@ class VideoPlayer:
                                 f"Preparing ssd model..", 
                                 (10, 15), 
                                 pen.char_size_, pen.col_, pen.thick_, True)
-            self.showFrame(self.movie_.cur_frame_no_, frame_img)
+            
+            self.sendPaintFrameEvent(self.movie_.cur_frame_no_, frame_img)
             time.sleep(sleep_time_sec)
 
         # フレーム読み込み ＆ 検出実行
@@ -814,9 +847,10 @@ class VideoPlayer:
                                             f"Now detecting.. (net:{ssd_nettype}, dev:{ssd_device})", 
                                             (10, 15), 
                                             pen.char_size_, pen.col_, pen.thick_, True)
-                            self.showFrame(batch_frame_no, frame_img)
 
-                    time.sleep(sleep_time_sec)
+                            self.sendPaintFrameEvent(batch_frame_no, frame_img)
+
+                        time.sleep(sleep_time_sec)
 
             else:
                 # [Stopボタン押下で検出が中断した場合] 
@@ -829,7 +863,7 @@ class VideoPlayer:
 
         # 元の位置に戻す
         self.movie_.setCurFrame(tmp_cur_frame_no)
-        self.showFrame(self.movie_.cur_frame_no_)
+        self.sendPaintFrameEvent(self.movie_.cur_frame_no_)
 
         return
 
@@ -842,6 +876,7 @@ class VideoPlayer:
         det_minsize = int(self.cfg_["ssd_model_detail_minsize"])
 
         pen = DrawPen((255,255,255), 2, 0.6)
+        sleep_time_sec = 1.0 / self.movie_.play_fps_
 
         tmp_cur_frame_no = self.movie_.cur_frame_no_
 
@@ -863,7 +898,9 @@ class VideoPlayer:
                     if is_saved == True:
                         ImageProc.drawText(frame_img, "Saved Frame", 
                                         (10, 15), pen.char_size_, pen.col_, pen.thick_, True)
-                        self.showFrame(self.movie_.cur_frame_no_, frame_img)
+                        
+                        self.sendPaintFrameEvent(self.movie_.cur_frame_no_, frame_img)
+                        time.sleep(sleep_time_sec)
                     
                     self.status_label_.config(text=f"Processing Frame: {frame_no+1}/{self.movie_.num_cap_frame_}..")
 
@@ -878,7 +915,7 @@ class VideoPlayer:
 
         # 元の位置に戻す
         self.movie_.setCurFrame(tmp_cur_frame_no)
-        self.showFrame(self.movie_.cur_frame_no_)
+        self.sendPaintFrameEvent(self.movie_.cur_frame_no_)
 
         return
 
