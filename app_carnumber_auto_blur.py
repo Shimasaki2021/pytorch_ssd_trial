@@ -17,6 +17,7 @@ import torch
 
 from utils.data_augumentation import jaccard_numpy
 from common_ssd import ImageProc, MovieLoader, DetResult, DrawPen, Logger, KalmanFilter2D
+from common_ssd import dumpDetResultsToCsvLine
 from predict_ssd import SSDModelDetector
 
 class DetNumberPlate:
@@ -507,10 +508,11 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
     num_batch_real = num_batch_frame * len(img_procs)
 
     # 画像出力用フォルダ作成
+    movie_fname_base = os.path.splitext(os.path.basename(movie_fpath))[0]
     if (is_debug == True) and (is_output_debug == True):
-        output_imgdir_name = os.path.splitext(os.path.basename(movie_fpath))[0] + ".dbg"
+        output_imgdir_name = f"{movie_fname_base}.dbg"
     else:
-        output_imgdir_name = os.path.splitext(os.path.basename(movie_fpath))[0] + ".blur"
+        output_imgdir_name = f"{movie_fname_base}.blur"
     output_imgdir_path = Logger.createOutputDir(ssd_model.device_.type, ssd_model.net_type_, output_imgdir_name)
 
     # 入力動画読み込み
@@ -524,11 +526,16 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
     print(f"play_fps = {play_fps}")
 
     # 出力用動画を作成
+    output_movie_fpath = f"{output_imgdir_path}/{output_imgdir_name}.mp4"
     out_movie:cv2.VideoWriter = None
 
     if is_output_movie == True:
         fourcc    = cv2.VideoWriter_fourcc("m","p","4","v")
-        out_movie = cv2.VideoWriter(f"{output_imgdir_path}/{output_imgdir_name}.mp4", fourcc, play_fps, (frame_w, frame_h))
+        out_movie = cv2.VideoWriter(output_movie_fpath, fourcc, play_fps, (frame_w, frame_h))
+
+    # 検出結果出力csvを作成
+    output_detcsv_fpath = f"{output_imgdir_path}/{movie_fname_base}.csv"
+    detcsv_fp = open(output_detcsv_fpath,"w")
 
     # 入力動画のフレーム読み込み ＆ 検出実行
     # 結果を出力動画に書き込み
@@ -622,7 +629,12 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
                             out_movie.write(img_debug)
                         else:
                             out_movie.write(img_org)
-                    
+
+                    # 検出結果出力
+                    if detcsv_fp is not None:
+                        outcsv_line = dumpDetResultsToCsvLine(batch_frame_no, det_result)
+                        detcsv_fp.write(f"{outcsv_line}\n")
+
                     # 表示
                     if is_disp_debug == True:
                         cv2.imshow(output_imgdir_name, img_debug)
@@ -640,6 +652,9 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
     if out_movie is not None:
         out_movie.release()
         out_movie = None
+
+    if detcsv_fp is not None:
+        detcsv_fp.close()
 
     return
 

@@ -80,6 +80,34 @@ class DetResult:
 
         return bbox_overlap_area
 
+def dumpDetResultsToCsvLine(frame_no:int, det_results:List[DetResult]) -> str:
+    line_csv_str = f"{frame_no},{len(det_results)},"
+    for cur_det in det_results:
+        line_csv_str += f"{cur_det.class_name_},{cur_det.score_},"
+        line_csv_str += f"{cur_det.bbox_[0]},{cur_det.bbox_[1]},{cur_det.bbox_[2]},{cur_det.bbox_[3]},"
+
+    return line_csv_str
+
+def readDetResultsFromCsvLine(line_csv_str:str) -> Tuple[int,List[DetResult]]:
+    det_results:List[DetResult] = []
+
+    line_csv = line_csv_str.split(",")
+
+    frame_no        = int(line_csv[0])
+    num_det_results = int(line_csv[1])
+    if num_det_results > 0:
+        for idx_item in range(2, 2+num_det_results*6, 6):
+            cls_name = str(line_csv[idx_item + 0])
+            score    = float(line_csv[idx_item + 1])
+            bbox     = np.array([int(line_csv[idx_item + 2]),
+                                 int(line_csv[idx_item + 3]),
+                                 int(line_csv[idx_item + 4]),
+                                 int(line_csv[idx_item + 5])])
+            
+            det_results.append(DetResult(cls_name, bbox, score))
+
+    return (frame_no, det_results)
+
 class AnnoData:
     def __init__(self, class_name:str, bbox:np.ndarray):
         self.class_name_ = class_name

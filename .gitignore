@@ -1,5 +1,6 @@
 data/od_cars/
 data/*.mp4
+data/*.csv
 data/*Zone.Identifier
 data/od_dbg/
 data/test/

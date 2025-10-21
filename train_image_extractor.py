@@ -14,15 +14,17 @@ from typing import List,Tuple,Dict,Any
 from tqdm import tqdm
 import torch
 
-from common_ssd import ImageProc, DrawPen, MovieLoader, DetResult
+from common_ssd import ImageProc, DrawPen, MovieLoader, DetResult, readDetResultsFromCsvLine
 from predict_ssd import SSDModelDetector
 
 class FrameProc:
-    def __init__(self, frame_no:int, proc_area:List[ImageProc]):
-        self.frame_no_      = frame_no
-        self.proc_area_     = proc_area
-        self.det_result_:List[DetResult] = []
+    def __init__(self, frame_no:int, proc_area:List[ImageProc],target_cls:str, det_minsize:int):
+        self.frame_no_    = frame_no
+        self.proc_area_   = proc_area
+        self.target_cls_  = target_cls
+        self.det_minsize_ = det_minsize
 
+        self.det_result_:List[DetResult] = []
         self.is_save_area_:List[bool] = [False] * len(self.proc_area_)
         self.is_save_det_:List[bool]  = []
         return
@@ -62,13 +64,18 @@ class FrameProc:
                 self.is_save_area_[area_no] = not self.is_save_area_[area_no]
         return
 
-    def setToggleIsSaveDet(self, loc_x:int, loc_y:int, target_cls:str, det_minsize:int):
+    def isSelectable(self, det_result:DetResult) -> bool:
+        is_selectable = False
+        if det_result.class_name_ == self.target_cls_:
+            if (det_result.bbox_w_ > self.det_minsize_) and (det_result.bbox_h_ > self.det_minsize_):
+                is_selectable = True
+        return is_selectable
+
+    def setToggleIsSaveDet(self, loc_x:int, loc_y:int):
         # print(f"In FrameProc.setToggleIsSaveDet({loc_x}, {loc_y})")
         for det_no, cur_det in enumerate(self.det_result_):
-
-            if (cur_det.class_name_ == target_cls) and (cur_det.isInArea(loc_x, loc_y) == True):
-                if (cur_det.bbox_w_ > det_minsize) and (cur_det.bbox_h_ > det_minsize):
-                    self.is_save_det_[det_no] = not self.is_save_det_[det_no]
+            if (cur_det.isInArea(loc_x, loc_y) == True) and (self.isSelectable(cur_det) == True):
+                self.is_save_det_[det_no] = not self.is_save_det_[det_no]
         return
 
     def paint(self, img:np.ndarray) -> np.ndarray:
@@ -87,6 +94,10 @@ class FrameProc:
                 pen = DrawPen((255,255,255), 1, 0.4)
                 if self.is_save_det_[det_no] == True:
                     pen = DrawPen((0,255,255), 1, 0.4)
+                elif self.isSelectable(cur_det) == True:
+                    pen = DrawPen((255,255,0), 1, 0.4)
+                else:
+                    pass
 
                 img = ImageProc.drawResultDetOne(img, cur_det, pen)
 
@@ -208,12 +219,23 @@ class FrameSet:
 
         self.num_frame_ = num_frame
         for frame_no in range(num_frame):
-            self.frames_.append(FrameProc(frame_no, self.proc_area_))
+            self.frames_.append(FrameProc(frame_no, self.proc_area_, self.ssd_detail_areacls_, self.ssd_detail_minsize_))
         return
 
     def delFrames(self):
         self.num_frame_ = 0
         self.frames_.clear()
+        return
+    
+    def loadDetResults(self, det_csv_fpath:str):
+        with open(det_csv_fpath,"r") as fp:
+            lines_csv = fp.readlines()
+            for line_csv in lines_csv:
+                (frame_no, det_results) = readDetResultsFromCsvLine(line_csv)
+
+                frame = self.getFrame(frame_no)
+                if frame is not None:
+                    frame.setDetResult(det_results)
         return
     
     def isExistDetResult(self) -> bool:
@@ -241,7 +263,7 @@ class FrameSet:
         if self.isExistDetResult() == True:
             frame = self.getFrame(frame_no)
             if frame is not None:
-                frame.setToggleIsSaveDet(loc_x, loc_y, self.ssd_detail_areacls_, self.ssd_detail_minsize_)
+                frame.setToggleIsSaveDet(loc_x, loc_y)
         return
 
     def isExistSaveAreaDet(self) -> bool:
@@ -636,6 +658,10 @@ class VideoPlayer:
             num_frame = self.movie_.getNumFrame()
             self.frame_set_.createFrames(num_frame)
 
+            det_csv_fpath = f"{os.path.splitext(path)[0]}.csv"
+            if os.path.isfile(det_csv_fpath) == True:
+                self.frame_set_.loadDetResults(det_csv_fpath)
+
             self.seekbar_.config(to=num_frame - 1)
 
             path_basename = os.path.basename(path)
@@ -713,7 +739,8 @@ class VideoPlayer:
                     if cur_frame.isExistDetResult() == True:
                         min_size = self.frame_set_.ssd_detail_minsize_
                         tar_cls  = self.frame_set_.ssd_detail_areacls_
-                        usage_str = f"{usage_str}, [Mouse Right] Select det rect({tar_cls}(over {min_size}x{min_size}px) only)"
+                        # usage_str = f"{usage_str}, [Mouse Right] Select det rect({tar_cls}(over {min_size}x{min_size}px) only)"
+                        usage_str = f"{usage_str}, [Mouse Right] Select det rect(skyblue only)"
 
                     usage_str = f"{usage_str}, [←] prev, [→] next"
                     self.usage_label_.config(text=usage_str)
