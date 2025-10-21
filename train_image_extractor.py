@@ -14,7 +14,8 @@ from typing import List,Tuple,Dict,Any
 from tqdm import tqdm
 import torch
 
-from common_ssd import ImageProc, DrawPen, MovieLoader, DetResult, readDetResultsFromCsvLine
+from common_ssd import ImageProc, DrawPen, MovieLoader, DetResult
+from common_ssd import readDetResultsFromCsvLine, dumpDetResultsToCsvLine
 from predict_ssd import SSDModelDetector
 
 class FrameProc:
@@ -236,6 +237,14 @@ class FrameSet:
                 frame = self.getFrame(frame_no)
                 if frame is not None:
                     frame.setDetResult(det_results)
+        return
+    
+    def saveDetResults(self, det_csv_fpath:str):
+        if self.isExistDetResult() == True:
+            with open(det_csv_fpath,"w") as fp:
+                for cur_frame in self.frames_:
+                    line_csv_str = dumpDetResultsToCsvLine(cur_frame.frame_no_, cur_frame.det_result_)
+                    fp.write(f"{line_csv_str}\n")
         return
     
     def isExistDetResult(self) -> bool:
@@ -658,6 +667,7 @@ class VideoPlayer:
             num_frame = self.movie_.getNumFrame()
             self.frame_set_.createFrames(num_frame)
 
+            # 検出結果csvが動画と同じディレクトリにあれば、読み込み
             det_csv_fpath = f"{os.path.splitext(path)[0]}.csv"
             if os.path.isfile(det_csv_fpath) == True:
                 self.frame_set_.loadDetResults(det_csv_fpath)
@@ -882,6 +892,10 @@ class VideoPlayer:
             else:
                 # [Stopボタン押下で検出が中断した場合] 
                 break
+
+        # 検出結果csvを保存
+        det_csv_fpath = f"{self.frame_set_.outdir_path_}/{self.frame_set_.outimg_fname_base_}.csv"
+        self.frame_set_.saveDetResults(det_csv_fpath)
 
         # 検出終了
         self.transState(VPEvent.DETECT_END_)
