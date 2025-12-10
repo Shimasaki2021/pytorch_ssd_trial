@@ -68,7 +68,8 @@ class FrameProc:
     def isSelectable(self, det_result:DetResult) -> bool:
         is_selectable = False
         if det_result.class_name_ == self.target_cls_:
-            if (det_result.bbox_w_ > self.det_minsize_) and (det_result.bbox_h_ > self.det_minsize_):
+            # if (det_result.bbox_w_ > self.det_minsize_) and (det_result.bbox_h_ > self.det_minsize_):
+            if (det_result.bbox_w_ > self.det_minsize_) or (det_result.bbox_h_ > self.det_minsize_):
                 is_selectable = True
         return is_selectable
 

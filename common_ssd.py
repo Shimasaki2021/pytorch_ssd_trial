@@ -229,8 +229,12 @@ class ImageProc:
             det (DetResult) : 検出結果
             min_size (int)  : 矩形最小サイズ[px]
         """
-        if det.bbox_w_ > min_size and det.bbox_h_ > min_size:
-            self.init(det.bbox_[0], det.bbox_[1], det.bbox_[2], det.bbox_[3], img)
+        # if det.bbox_w_ > min_size and det.bbox_h_ > min_size:
+            # self.init(det.bbox_[0], det.bbox_[1], det.bbox_[2], det.bbox_[3], img)
+        if (det.bbox_w_ > min_size) or (det.bbox_h_ > min_size):
+            (img_h, img_w, _) = img.shape
+            bbox_sq = ImageProc.correctSquareBox(img_w, img_h, det.bbox_)
+            self.init(bbox_sq[0], bbox_sq[1], bbox_sq[2], bbox_sq[3], img)
 
         # ※未使用（comment out） min_sizeになるよう範囲拡大
         # else:
@@ -305,6 +309,36 @@ class ImageProc:
             bbox[3] = img_h - 1
 
         return
+    
+    @staticmethod
+    def correctSquareBox(img_w:int, img_h:int, bbox:np.ndarray) -> np.ndarray:
+        bbox_center_x = (bbox[0] + bbox[2]) / 2
+        bbox_center_y = (bbox[1] + bbox[3]) / 2
+        bbox_w = bbox[2] - bbox[0]
+        bbox_h = bbox[3] - bbox[1]
+        bbox_wh = max(bbox_w, bbox_h)
+
+        bbox_sq = np.array(bbox)
+
+        bbox_sq[0] = bbox_center_x - (bbox_wh / 2)
+        if bbox_sq[0] < 0:
+            bbox_sq[0] = 0
+
+        bbox_sq[1] = bbox_center_y - (bbox_wh / 2)
+        if bbox_sq[1] < 0:
+            bbox_sq[1] = 0
+        
+        bbox_sq[2] = bbox_sq[0] + bbox_wh
+        if bbox_sq[2] >= img_w:
+            bbox_sq[2] = img_w - 1
+            bbox_sq[0] = bbox_sq[2] - bbox_wh
+
+        bbox_sq[3] = bbox_sq[1] + bbox_wh
+        if bbox_sq[3] >= img_h:
+            bbox_sq[3] = img_h - 1
+            bbox_sq[1] = bbox_sq[3] - bbox_wh
+
+        return bbox_sq
 
     def convBBox(self, bbox:np.ndarray) -> np.ndarray:
         """ 外接矩形（BoundingBox）を正規座標→画像座標に変換
