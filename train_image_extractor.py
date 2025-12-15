@@ -978,7 +978,7 @@ if __name__ == "__main__":
         # "ssd_model_num_batch"       : 32,
         # "ssd_model_is_det_detail"   : False, # predictDetail()実行有無（実行すると処理速度は低下するが未検出小）
         # "ssd_model_detail_minsize"  : 100,   # predictDetail()実行時の検出範囲最小サイズ[px]
-        # "ssd_model_detail_areacls"  : "car", # predictDetail()実行時の検出範囲にするクラス
+        # "ssd_model_detail_areacls"  : ["car","bike"], # predictDetail()実行時の検出範囲にするクラス
         # "ssd_model_conf_th"         : 0.5,
         # "ssd_model_iou_th"          : 0.4,
 
@@ -988,7 +988,7 @@ if __name__ == "__main__":
         "ssd_model_num_batch"       : 64,
         "ssd_model_is_det_detail"   : True,  # predictDetail()実行有無（実行すると処理速度は低下するが未検出小）
         "ssd_model_detail_minsize"  : 100,   # predictDetail()実行時の検出範囲最小サイズ[px]
-        "ssd_model_detail_areacls"  : "car", # predictDetail()実行時の検出範囲にするクラス
+        "ssd_model_detail_areacls"  : ["car","bike"], # predictDetail()実行時の検出範囲にするクラス
         "ssd_model_conf_th"         : 0.5,
         "ssd_model_iou_th"          : 0.4,
 

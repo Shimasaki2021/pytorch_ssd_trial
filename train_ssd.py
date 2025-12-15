@@ -484,7 +484,7 @@ if __name__ == "__main__":
         "train_data_path"    : "./data/od_cars",
 
         # 学習クラス名
-        "train_voc_classes"  : ["car","number"],
+        "train_voc_classes"  : ["car","number","bike"],
 
         # 検証用画像の割合（全体のtest_rateを検証用画像にする）
         "train_data_test_rate" : 0.1,

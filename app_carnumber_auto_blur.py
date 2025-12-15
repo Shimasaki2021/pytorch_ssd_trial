@@ -20,6 +20,8 @@ from common_ssd import ImageProc, MovieLoader, DetResult, DrawPen, Logger, Kalma
 from common_ssd import dumpDetResultsToCsvLine
 from predict_ssd import SSDModelDetector
 
+NUMBER_PLATE_OWNERS = ["car","bike"]
+
 class DetNumberPlate:
     """ 検出されたナンバープレート1つ分
 
@@ -246,7 +248,7 @@ class DetNumberPlate:
 
             for det_obj in det_objs:
 
-                if det_obj.class_name_ == "car":
+                if det_obj.class_name_ in NUMBER_PLATE_OWNERS:
 
                     # 重なりを算出
                     own_rate = DetResult.calcOverlapAreaBBox(obj_number.bbox_, det_obj.bbox_) / bbox_n_area
@@ -314,7 +316,7 @@ class DetNumberPlateMng:
         # 今周期検出された車の外接矩形bboxを抽出
         det_cars_bbox = [obj_det_car.bbox_
                          # 車ではない場合、重なりなしと判定される外接矩形を入れておく
-                         if obj_det_car.class_name_ == "car" else np.array([-1,-1,-1,-1])
+                         if obj_det_car.class_name_ in NUMBER_PLATE_OWNERS else np.array([-1,-1,-1,-1])
                          for obj_det_car in det_results]
 
         # 今周期の検出されたナンバープレートと、ナンバープレートを所有する車のペアを登録する
@@ -551,7 +553,7 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
 
                 # 車の枠からナンバープレートを再検出
                 if is_det_detail == True:
-                    det_results = ssd_model.predictDetail(det_results, batch_imgs, detail_minsize, num_batch_real, "car", conf, overlap)
+                    det_results = ssd_model.predictDetail(det_results, batch_imgs, detail_minsize, num_batch_real, NUMBER_PLATE_OWNERS, conf, overlap)
 
                 time_e = time.perf_counter()
 

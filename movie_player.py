@@ -168,7 +168,7 @@ if __name__ == "__main__":
         # "img_procs_det_weight_fpath"  : "./weights/mb2-ssd_best_od_cars.pth", 
         # "img_procs_det_num_batch"     : 64,
         # "img_procs_det_area_minsize"  : 100,
-        # "img_procs_det_area_class"    : "car",
+        # "img_procs_det_area_class"    : ["car","bike"],
         # "img_procs_det_conf_lower_th" : 0.5,
         # "img_procs_det_iou_th"        : 0.4,
     }

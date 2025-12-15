@@ -181,7 +181,7 @@ class SSDModelDetector(SSDModel):
 
         return det_results
 
-    def predictDetail(self, det_results:List[List[DetResult]], imgs:List[np.ndarray], min_bbox_size:int, num_batch:int, area_class:str, conf=0.5, overlap=0.45) -> List[List[DetResult]]:
+    def predictDetail(self, det_results:List[List[DetResult]], imgs:List[np.ndarray], min_bbox_size:int, num_batch:int, area_class:List[str], conf=0.5, overlap=0.45) -> List[List[DetResult]]:
         """ 検知（推論）実行（検出結果の中を詳細検知）
 
         - 検出結果(area_class)の矩形内に対してSSDモデルの検知を実行
@@ -192,7 +192,7 @@ class SSDModelDetector(SSDModel):
             imgs (List[np.ndarray])             : 画像（複数） [img_num,h,w,ch(BGR)]
             min_bbox_size (int)                 : 矩形最小サイズ[px]
             num_batch (int)                     : バッチ数（predict()実行時のバッチ数）
-            area_class (str)                    : 検出範囲となるクラス
+            area_class (List[str])              : 検出範囲となるクラス
             conf (float, optional)              : 信頼度conf下限閾値. Defaults to 0.5.
             overlap (float, optional)           : 重複有無の判定閾値(IoU). Defaults to 0.45.
 
@@ -210,7 +210,7 @@ class SSDModelDetector(SSDModel):
             num_area = 0
             for img_no, img_org in enumerate(imgs):
                 for det_obj in det_results[img_no]:
-                    if det_obj.class_name_ == area_class:
+                    if det_obj.class_name_ in area_class:
                         img_proc = ImageProc()
                         img_proc.initFromDet(img_org, det_obj, min_bbox_size)
                         if img_proc.is_no_proc_ == False:
@@ -283,7 +283,7 @@ class SSDModelDetector(SSDModel):
                             # Bounding Box: 入力画像上での座標値に変換
                             bb_i = img_procs[img_no][area_no].convBBox( outputs[i][1:] )
 
-                            if cls_name != area_class:
+                            if not (cls_name in area_class):
                                 # area_class以外の検出結果のみ採用
                                 det_results[img_no].append(DetResult(cls_name, bb_i, sc))
 
@@ -377,7 +377,7 @@ def main_play_movie(ssd_model:SSDModelDetector, movie_fpath:str, cfg:Dict[str,An
     overlap:float             = cfg["ssd_model_iou_th"]         # 重複有無の判定閾値(IoU)
     is_det_detail:bool        = cfg["ssd_model_is_det_detail"]  # predictDetail()実行有無（実行すると処理速度は低下するが未検出小）
     detail_minsize:int        = cfg["ssd_model_detail_minsize"] # predictDetail()実行時の検出範囲最小サイズ[px]
-    detail_areacls:str        = cfg["ssd_model_detail_areacls"] # predictDetail()実行時の検出範囲にするクラス
+    detail_areacls:List[str]  = cfg["ssd_model_detail_areacls"] # predictDetail()実行時の検出範囲にするクラス
 
     num_batch_frame = int(num_batch / len(img_procs))
     if num_batch_frame < 1:
@@ -467,7 +467,7 @@ def main_det_img(ssd_model:SSDModelDetector, img_fpath:str, cfg:Dict[str,Any]):
     overlap:float             = cfg["ssd_model_iou_th"]         # 重複有無の判定閾値(IoU)
     is_det_detail:bool        = cfg["ssd_model_is_det_detail"]  # predictDetail()実行有無（実行すると処理速度は低下するが未検出小）
     detail_minsize:int        = cfg["ssd_model_detail_minsize"] # predictDetail()実行時の検出範囲最小サイズ[px]
-    detail_areacls:str        = cfg["ssd_model_detail_areacls"] # predictDetail()実行時の検出範囲にするクラス
+    detail_areacls:List[str]  = cfg["ssd_model_detail_areacls"] # predictDetail()実行時の検出範囲にするクラス
 
     # 結果出力フォルダ作成
     output_imgdir_path = Logger.createOutputDir(ssd_model.device_.type, ssd_model.net_type_, "")
@@ -525,7 +525,7 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, cfg:Dict[str,Any
     eval_iou_th:float   = cfg["ssd_model_eval_iou_th"]    # 評価（mAP算出）時のIoU閾値
     is_det_detail:bool  = cfg["ssd_model_is_det_detail"]  # predictDetail()実行有無（実行すると処理速度は低下するが未検出小）
     detail_minsize:int  = cfg["ssd_model_detail_minsize"] # predictDetail()実行時の検出範囲最小サイズ[px]
-    detail_areacls:str  = cfg["ssd_model_detail_areacls"] # predictDetail()実行時の検出範囲にするクラス
+    detail_areacls:List[str] = cfg["ssd_model_detail_areacls"] # predictDetail()実行時の検出範囲にするクラス
 
     # 検出領域は、画像全域のみサポート
     img_proc = ImageProc()
@@ -712,7 +712,7 @@ if __name__ == "__main__":
         # "ssd_model_num_batch"       : 32,
         # "ssd_model_is_det_detail"   : False, # predictDetail()実行有無（実行すると処理速度は低下するが未検出小）
         # "ssd_model_detail_minsize"  : 100,   # predictDetail()実行時の検出範囲最小サイズ[px]
-        # "ssd_model_detail_areacls"  : "car", # predictDetail()実行時の検出範囲にするクラス
+        # "ssd_model_detail_areacls"  : ["car","bike"], # predictDetail()実行時の検出範囲にするクラス
 
         # (SSDモデル:mobilenetベース)ネットワーク種別/パラメータ/バッチ処理数
         "ssd_model_net_type"        : "mb2-ssd",
@@ -720,7 +720,7 @@ if __name__ == "__main__":
         "ssd_model_num_batch"       : 64,
         "ssd_model_is_det_detail"   : True,  # predictDetail()実行有無（実行すると処理速度は低下するが未検出小）
         "ssd_model_detail_minsize"  : 100,   # predictDetail()実行時の検出範囲最小サイズ[px]
-        "ssd_model_detail_areacls"  : "car", # predictDetail()実行時の検出範囲にするクラス
+        "ssd_model_detail_areacls"  : ["car","bike"], # predictDetail()実行時の検出範囲にするクラス
 
         # (SSDモデル) 信頼度confの足切り閾値
         "ssd_model_conf_lower_th" : 0.5,
