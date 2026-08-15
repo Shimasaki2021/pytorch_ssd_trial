@@ -44,9 +44,9 @@ class DetNumberPlate:
         self.frame_h_    = frame_h
         self.accum_conf_ = 0.0   # 累積信頼度（検出した信頼度confを積算）
 
-        self.obj_number_:DetResult            = None
+        self.obj_number_:DetResult|None       = None
         self.obj_numbers_sub_:List[DetResult] = [] # ナンバープレート誤検出対策：誤検出のほうが信頼度が高い場合に正検出のぼかしが解けてしまう現象の対策用
-        self.obj_car_:DetResult               = None
+        self.obj_car_:DetResult|None          = None
 
         # 位置推定用カルマンフィルタ
         #   推定対象：ナンバープレート外接矩形の中心
@@ -62,7 +62,10 @@ class DetNumberPlate:
     
     def resetDetCurFlag(self):
         # 今周期検出済みフラグをOFF
-        if self.isValid() == True:
+        if (self.isValid() == True) \
+            and (self.obj_number_ is not None) \
+            and (self.obj_car_ is not None):
+
             self.obj_number_.is_det_cur_ = False
             self.obj_car_.is_det_cur_    = False
 
@@ -87,7 +90,10 @@ class DetNumberPlate:
         if (obj_number is not None) and (obj_car is not None):
             self.is_valid_ = True
 
-            if (self.isValid() == True) and (self.obj_number_.is_det_cur_ == True):
+            if (self.isValid() == True) \
+                and (self.obj_number_ is not None) \
+                and (self.obj_number_.is_det_cur_ == True):
+
                 # [今周期登録された物体の場合] ナンバープレートの信頼度が高ければ更新
                 if self.obj_number_.score_ < obj_number.score_:
                     self.obj_number_ = copy.deepcopy(obj_number)
@@ -103,7 +109,7 @@ class DetNumberPlate:
 
         return
 
-    def updateDetCarObject(self, obj_car:DetResult):
+    def updateDetCarObject(self, obj_car:DetResult|None):
         """ 検出物体（車のみ）の更新（引数で指定された物体に更新）
 
         Args:
@@ -112,7 +118,10 @@ class DetNumberPlate:
         if obj_car is not None:
             self.is_valid_ = True
 
-            if (self.isValid() == True) and (self.obj_car_.is_det_cur_ == True):
+            if (self.isValid() == True) \
+                and (self.obj_car_ is not None) \
+                and (self.obj_car_.is_det_cur_ == True):
+
                 # [今周期登録された車の場合] 信頼度が高ければ更新
                 if self.obj_car_.score_ < obj_car.score_:
                     self.obj_car_ = copy.deepcopy(obj_car)
@@ -162,7 +171,9 @@ class DetNumberPlate:
 
             self.pos_estimator_.predict() # 予測ステップ
 
-            if self.obj_number_.is_det_cur_ == True:
+            if (self.obj_number_ is not None) \
+                and (self.obj_number_.is_det_cur_ == True):
+
                 # [ナンバープレート検出時（観測値が得られた場合）] 
                 measure = self.obj_number_.getBboxCenter().astype(float)
                 self.pos_estimator_.update(measure) # 更新ステップ
@@ -170,6 +181,7 @@ class DetNumberPlate:
                 # 一般的ではないが、今回の場合、未検出のときだけカルマンFで外挿をかけたいので、
                 # 観測値が得られた場合は推定値を観測値でリセット（位置成分のみ）
                 self.pos_estimator_.resetPredict(measure)
+
         return
 
     def getEstimatedNumberBBox(self) -> np.ndarray:
@@ -180,7 +192,9 @@ class DetNumberPlate:
         """        
         ret_bbox = np.zeros((4,)).astype(int)
 
-        if self.isValid() == True:
+        if (self.isValid() == True) \
+            and (self.obj_number_ is not None):
+
             # カルマンフィルタ推定値（外接矩形の中点位置）を取得
             est_pt_center = self.pos_estimator_.getEstimatedValue()
 
@@ -226,7 +240,7 @@ class DetNumberPlate:
         return ret_bbox
     
     @staticmethod
-    def searchOwnerCar(obj_number:DetResult, det_objs:List[DetResult], own_car_rate_th:float) -> DetResult:
+    def searchOwnerCar(obj_number:DetResult, det_objs:List[DetResult|None], own_car_rate_th:float) -> DetResult|None:
         """ ナンバープレート（obj_number）を所有（包含）する車の検出結果を探索
 
         - 「重なり矩形面積／ナンバープレートの面積」が閾値以上の場合に、「所有する（包含する）」と判定
@@ -240,7 +254,7 @@ class DetNumberPlate:
         Returns:
             DetResult: ナンバープレート（obj_number）を所有（包含）する車
         """        
-        obj_car:DetResult = None
+        obj_car:DetResult|None = None
         
         bbox_n_area = float(obj_number.bbox_area_)
 
@@ -248,7 +262,8 @@ class DetNumberPlate:
 
             for det_obj in det_objs:
 
-                if det_obj.class_name_ in NUMBER_PLATE_OWNERS:
+                if (det_obj is not None) \
+                    and (det_obj.class_name_ in NUMBER_PLATE_OWNERS):
 
                     # 重なりを算出
                     own_rate = DetResult.calcOverlapAreaBBox(obj_number.bbox_, det_obj.bbox_) / bbox_n_area
@@ -294,43 +309,45 @@ class DetNumberPlateMng:
             det_obj.resetDetCurFlag()
         return
 
-    def addCurDetNumber(self, det_results:List[DetResult], same_cur_iou_th=0.5, own_car_rate_th=0.5):
+    def addCurDetNumber(self, det_results:List[DetResult|None], same_cur_iou_th=0.5, own_car_rate_th=0.5):
         """ 今周期の検出結果を登録
 
         Args:
             det_results (List[DetResult])    : 検出結果
             same_cur_iou_th (float, optional): 同一の車と判定するIoU閾値. Defaults to 0.5.
             own_car_rate_th (float, optional): 判定閾値（「重なり矩形面積／ナンバープレートの面積」の閾値）. Defaults to 0.5.
-        """        
+        """
         # 登録済みの車の外接矩形bboxを抽出
         regist_cars_bbox = [obj_reg.obj_car_.bbox_ 
                             # isValid()==Falseの場合、重なりなしと判定される外接矩形を入れておく
-                            if obj_reg.isValid() == True else np.array([-1,-1,-1,-1])
+                            if (obj_reg.isValid() == True) and (obj_reg.obj_car_ is not None) else np.array([-1,-1,-1,-1])
                             for obj_reg in self.det_obj_buf_]
         
         # 登録済みの過去周期の車を抽出
         regist_past_cars = [obj_reg.obj_car_ 
                             for obj_reg in self.det_obj_buf_ 
-                            if (obj_reg.isValid() == True) and (obj_reg.obj_car_.is_det_cur_ == False)]
+                            if (obj_reg.isValid() == True) and (obj_reg.obj_car_ is not None) and (obj_reg.obj_car_.is_det_cur_ == False)]
 
         # 今周期検出された車の外接矩形bboxを抽出
         det_cars_bbox = [obj_det_car.bbox_
                          # 車ではない場合、重なりなしと判定される外接矩形を入れておく
-                         if obj_det_car.class_name_ in NUMBER_PLATE_OWNERS else np.array([-1,-1,-1,-1])
+                         if (obj_det_car is not None) and (obj_det_car.class_name_ in NUMBER_PLATE_OWNERS) else np.array([-1,-1,-1,-1])
                          for obj_det_car in det_results]
 
         # 今周期の検出されたナンバープレートと、ナンバープレートを所有する車のペアを登録する
         #   - 既に登録されているナンバープレートと同一の場合は、差し替え
         #   - 同一ものがない場合は、新規登録
         for obj_det in det_results:
-            if obj_det.class_name_ == "number":
+            if (obj_det is not None) \
+                and  (obj_det.class_name_ == "number"):
+
                 # ナンバープレートを所有する車のペアを探索
                 obj_number = obj_det
                 obj_car    = DetNumberPlate.searchOwnerCar(obj_number, det_results, own_car_rate_th)
 
                 if obj_car is None:
                     # [所有する車が、今周期検出分から見つからなかった場合] 登録済みの過去周期の車から探す
-                    obj_car = DetNumberPlate.searchOwnerCar(obj_number, regist_past_cars, own_car_rate_th)
+                    obj_car = DetNumberPlate.searchOwnerCar(obj_number, regist_past_cars, own_car_rate_th) # type: ignore
 
                 if obj_car is not None:
                     # [obj_car(車)が、obj_number(ナンバープレート)を所有している場合]
@@ -350,11 +367,17 @@ class DetNumberPlateMng:
 
         # 今周期未検出のナンバープレートを所有する車を、今周期検出分に更新
         for obj_reg in self.det_obj_buf_:
-            if (obj_reg.isValid() == True) and (obj_reg.obj_number_.is_det_cur_ == False):
+            if (obj_reg.isValid() == True) \
+                and (obj_reg.obj_number_ is not None) \
+                and (obj_reg.obj_number_.is_det_cur_ == False):
+
                 # [obj_regが今周期ナンバープレート未検出]
 
                 # obj_regの車と同一のものが、今周期検出物体に入っているかどうかを確認（トラッキング）
-                buf_idx = self.trackingCar(obj_reg.obj_car_, same_cur_iou_th, det_cars_bbox)
+                buf_idx = -1
+                if obj_reg.obj_car_ is not None:
+                    buf_idx = self.trackingCar(obj_reg.obj_car_, same_cur_iou_th, det_cars_bbox)
+
                 if buf_idx >= 0:
                     # [今周期検出物体に入っている場合] 車を今周期検出分に差し替え
                     obj_reg.updateDetCarObject(det_results[buf_idx])
@@ -407,7 +430,9 @@ class DetNumberPlateMng:
 
             if obj_reg.is_valid_ == True:
 
-                if obj_reg.obj_number_.is_det_cur_ == True:
+                if (obj_reg.obj_number_ is not None) \
+                    and (obj_reg.obj_number_.is_det_cur_ == True):
+
                     # [今周期にナンバープレート検出ありの場合] 
                     #  累積信頼度を加算。そのまま残す
                     obj_reg.updateAccumConf(obj_reg.obj_number_.score_)
@@ -417,7 +442,9 @@ class DetNumberPlateMng:
                     # [今周期にナンバープレート検出なしの場合] 
                     #  累積信頼度を減算。低くなったら無効化
                     dec_conf = -1.0
-                    if obj_reg.obj_car_.is_det_cur_ == True:
+                    if (obj_reg.obj_car_ is not None) \
+                        and (obj_reg.obj_car_.is_det_cur_ == True):
+
                         # 所有する車の信頼度が高いほど、減少がゆるやかになるようにする。車が未検出の場合は減少を加速（-1.0）
                         dec_conf =  obj_reg.obj_car_.score_ - 1.1 # ※1.1: 減少量を0にはしない
 
@@ -444,28 +471,32 @@ class DetNumberPlateMng:
         ret_objs:List[DetResult] = []
 
         for det_obj in self.det_obj_buf_:
-            if det_obj.isValid() == True:
+            if (det_obj.isValid() == True) and (det_obj.obj_car_ is not None):
+
                 det_obj_new = copy.deepcopy(det_obj)
 
-                # ナンバープレートの信頼度を、累積信頼度に書き換え
-                det_obj_new.obj_number_.score_ = det_obj_new.accum_conf_
+                if (det_obj_new.obj_car_ is not None) \
+                    and (det_obj_new.obj_number_ is not None):
 
-                # 今周期未検出だったナンバープレートの外接矩形は、過去周期結果から位置を推定した結果に書き換える
-                if det_obj_new.obj_number_.is_det_cur_ == False:
-                    det_obj_new.obj_number_.bbox_ = det_obj_new.getEstimatedNumberBBox()
+                    # ナンバープレートの信頼度を、累積信頼度に書き換え
+                    det_obj_new.obj_number_.score_ = det_obj_new.accum_conf_
 
-                if DetResult.calcOverlapAreaBBox(det_obj_new.obj_number_.bbox_, det_obj.obj_car_.bbox_) > 0.0:
-                    # ナンバープレートが車に含まれる場合のみ追加（位置推定で車の領域から外れた場合は除外）
-                    ret_objs.append(det_obj_new.obj_number_)
+                    # 今周期未検出だったナンバープレートの外接矩形は、過去周期結果から位置を推定した結果に書き換える
+                    if det_obj_new.obj_number_.is_det_cur_ == False:
+                        det_obj_new.obj_number_.bbox_ = det_obj_new.getEstimatedNumberBBox()
 
-                    # ナンバープレート誤検出対策用の物体（車の包含有無は確認済み）も、もしあれば加える
-                    if len(det_obj_new.obj_numbers_sub_) > 0:
-                        for obj_number_sub in det_obj_new.obj_numbers_sub_:
-                            ret_objs.append(obj_number_sub)
+                    if DetResult.calcOverlapAreaBBox(det_obj_new.obj_number_.bbox_, det_obj.obj_car_.bbox_) > 0.0:
+                        # ナンバープレートが車に含まれる場合のみ追加（位置推定で車の領域から外れた場合は除外）
+                        ret_objs.append(det_obj_new.obj_number_)
+
+                        # ナンバープレート誤検出対策用の物体（車の包含有無は確認済み）も、もしあれば加える
+                        if len(det_obj_new.obj_numbers_sub_) > 0:
+                            for obj_number_sub in det_obj_new.obj_numbers_sub_:
+                                ret_objs.append(obj_number_sub)
 
         return ret_objs
 
-    def getCars(self) -> List[DetResult]:
+    def getCars(self) -> List[DetResult|None]:
         """ 登録されている車を返す
 
         Returns:
@@ -529,10 +560,11 @@ def main_blur_movie(movie_fpath:str, ssd_model:SSDModelDetector, cfg:Dict[str,An
 
     # 出力用動画を作成
     output_movie_fpath = f"{output_imgdir_path}/{output_imgdir_name}.mp4"
-    out_movie:cv2.VideoWriter = None
+    out_movie:cv2.VideoWriter|None = None
 
     if is_output_movie == True:
-        fourcc    = cv2.VideoWriter_fourcc("m","p","4","v")
+        # fourcc    = cv2.VideoWriter_fourcc("m","p","4","v")
+        fourcc    = cv2.VideoWriter_fourcc(*"mp4v") # type: ignore
         out_movie = cv2.VideoWriter(output_movie_fpath, fourcc, play_fps, (frame_w, frame_h))
 
     # 検出結果出力csvを作成

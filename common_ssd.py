@@ -6,7 +6,7 @@ import math
 
 import cv2
 import numpy as np
-from typing import List,Dict,Tuple
+from typing import List,Dict,Tuple,Any
 from io import TextIOWrapper
 
 import torch
@@ -80,11 +80,12 @@ class DetResult:
 
         return bbox_overlap_area
 
-def dumpDetResultsToCsvLine(frame_no:int, det_results:List[DetResult]) -> str:
+def dumpDetResultsToCsvLine(frame_no:int, det_results:List[DetResult|None]) -> str:
     line_csv_str = f"{frame_no},{len(det_results)},"
     for cur_det in det_results:
-        line_csv_str += f"{cur_det.class_name_},{cur_det.score_},"
-        line_csv_str += f"{cur_det.bbox_[0]},{cur_det.bbox_[1]},{cur_det.bbox_[2]},{cur_det.bbox_[3]},"
+        if cur_det is not None:
+            line_csv_str += f"{cur_det.class_name_},{cur_det.score_},"
+            line_csv_str += f"{cur_det.bbox_[0]},{cur_det.bbox_[1]},{cur_det.bbox_[2]},{cur_det.bbox_[3]},"
 
     return line_csv_str
 
@@ -117,15 +118,17 @@ class AnnoData:
         self.bbox_ave_size_  = math.sqrt(float(self.bbox_area_))
         return
     
-    def extractPositiveDetResult(self, det_results:List[DetResult], jaccard_thres=0.5) -> Tuple[DetResult,float]:
+    def extractPositiveDetResult(self, det_results:List[DetResult|None], jaccard_thres=0.5) -> Tuple[DetResult|None,float]:
         # 正検出（jaccard係数＞thres の検知）を抽出
         #   複数存在する場合は最大値の結果を抽出
         #   存在しない場合はNoneを返す
         jaccard_max              = jaccard_thres
-        det_result_max:DetResult = None
+        det_result_max:DetResult|None = None
 
         if len(det_results) > 0:
-            det_bbox     = np.array([det.bbox_ for det in det_results])
+            det_bbox     = np.array([det.bbox_ 
+                                     if det is not None else None 
+                                     for det in det_results])
             jaccard_vals = jaccard_numpy(det_bbox, self.bbox_)
 
             for jaccard_val, det in zip(jaccard_vals, det_results):
@@ -152,7 +155,7 @@ def getAnnoData(anno_file:str, parse_anno:Anno_xml2list, voc_classes:List[str], 
     return ret_results
 
 class DrawPen:
-    def __init__(self, col:Tuple[int], thick:int, char_size:float):
+    def __init__(self, col:Tuple[int,int,int], thick:int, char_size:float):
         self.col_       = col
         self.thick_     = thick
         self.char_size_ = char_size
@@ -184,7 +187,7 @@ class ImageProc:
         self.init(lu_x, lu_y, rb_x, rb_y)
         return 
 
-    def init(self, lu_x=0, lu_y=0, rb_x=0, rb_y=0, img:np.ndarray=None):
+    def init(self, lu_x=0, lu_y=0, rb_x=0, rb_y=0, img:np.ndarray|None=None):
         """ コンストラクタ
 
         Args:
@@ -479,7 +482,7 @@ class ImageProc:
         return img_org
 
     @staticmethod
-    def drawResultDet(img_org:np.ndarray, det_results:List[DetResult], pen:DrawPen) -> np.ndarray:
+    def drawResultDet(img_org:np.ndarray, det_results:List[DetResult|None], pen:DrawPen) -> np.ndarray:
         """ 検出結果（枠等）を描画
 
         Args:
@@ -510,21 +513,22 @@ class ImageProc:
         return img_org
 
     @staticmethod
-    def drawResultDetOne(img_org:np.ndarray, det:DetResult, pen:DrawPen) -> np.ndarray:
-        display_txt = f"{det.class_name_}:{det.score_:.2f}"
+    def drawResultDetOne(img_org:np.ndarray, det:DetResult|None, pen:DrawPen) -> np.ndarray:
+        if det is not None:
+            display_txt = f"{det.class_name_}:{det.score_:.2f}"
 
-        # 検出結果を描画
-        cv2.rectangle(img_org, (det.bbox_[0], det.bbox_[1]), 
-                                (det.bbox_[2], det.bbox_[3]), 
-                                pen.col_, pen.thick_*2)
-        
-        loc_txt_y = det.bbox_[1]-7
-        if loc_txt_y < 10:
-            loc_txt_y = det.bbox_[3]-7
-        
-        ImageProc.drawText(img_org, display_txt, 
-                                    (det.bbox_[0], loc_txt_y), 
-                                    pen.char_size_, pen.col_, pen.thick_, True)
+            # 検出結果を描画
+            cv2.rectangle(img_org, (det.bbox_[0], det.bbox_[1]), 
+                                    (det.bbox_[2], det.bbox_[3]), 
+                                    pen.col_, pen.thick_*2)
+            
+            loc_txt_y = det.bbox_[1]-7
+            if loc_txt_y < 10:
+                loc_txt_y = det.bbox_[3]-7
+            
+            ImageProc.drawText(img_org, display_txt, 
+                                        (det.bbox_[0], loc_txt_y), 
+                                        pen.char_size_, pen.col_, pen.thick_, True)
         return img_org
 
     @staticmethod
@@ -636,7 +640,7 @@ def calcIndexesFromBatchIdx(img_procs:List[List[ImageProc]], batch_idx:int) -> T
 class MovieLoader:
     """ 動画読み込み
     """
-    def __init__(self, movie_fpath:str = None, play_fps=-1.0, num_batch_frame=1):
+    def __init__(self, movie_fpath:str|None = None, play_fps=-1.0, num_batch_frame=1):
         """ コンストラクタ
 
         Args:
@@ -644,7 +648,7 @@ class MovieLoader:
             play_fps (float, optional)     : 再生速度(fps). Defaults to -1.0.
             num_batch_frame (int, optional): 一度に読み込む（バッチ処理する）フレーム数[frame/cycle]. Defaults to 1.
         """
-        self.cap_:cv2.VideoCapture = None
+        self.cap_:cv2.VideoCapture|None = None
         self.cur_frame_no_    = 0
         self.num_cap_frame_   = 0
         self.play_fps_        = play_fps
@@ -656,7 +660,8 @@ class MovieLoader:
         return
 
     def release(self):
-        self.cap_.release()
+        if self.cap_ is not None:
+            self.cap_.release()
         self.cur_frame_no_    = 0
         self.num_cap_frame_   = 0
         self.play_fps_        = 0.0
@@ -714,25 +719,26 @@ class MovieLoader:
         Returns:
             Tuple[List[int], List[np.ndarray]]: (frame番号, 読み込んだ画像) ※バッチ処理数分のリスト
         """
-        ret_batch_frame_nos:List[int]   = []
-        ret_batch_imgs:List[np.ndarray] = []
+        if self.cap_ is not None:
+            ret_batch_frame_nos:List[int]   = []
+            ret_batch_imgs:List[np.ndarray] = []
 
-        # 動画末尾フレームまで再生していたらiteration終了
-        if self.cur_frame_no_ >= self.num_cap_frame_:
-            raise StopIteration()
+            # 動画末尾フレームまで再生していたらiteration終了
+            if self.cur_frame_no_ >= self.num_cap_frame_:
+                raise StopIteration()
 
-        # フレーム読み込み
-        self.cur_frame_no_ = int(self.cap_.get(cv2.CAP_PROP_POS_FRAMES)) 
-        while (len(ret_batch_frame_nos) < self.num_batch_frame_) and (self.cur_frame_no_ < self.num_cap_frame_):
+            # フレーム読み込み
+            self.cur_frame_no_ = int(self.cap_.get(cv2.CAP_PROP_POS_FRAMES)) 
+            while (len(ret_batch_frame_nos) < self.num_batch_frame_) and (self.cur_frame_no_ < self.num_cap_frame_):
 
-            img_org:np.ndarray = None
-            (_, img_org) = self.cap_.read()
+                img_org:np.ndarray|None = None
+                (_, img_org) = self.cap_.read()
 
-            if (img_org is not None) and (self.cur_frame_no_ % self.frame_play_step_ == 0):
-                ret_batch_frame_nos.append(self.cur_frame_no_)
-                ret_batch_imgs.append(copy.deepcopy(img_org))
+                if (img_org is not None) and (self.cur_frame_no_ % self.frame_play_step_ == 0):
+                    ret_batch_frame_nos.append(self.cur_frame_no_)
+                    ret_batch_imgs.append(copy.deepcopy(img_org))
 
-            self.cur_frame_no_ = int(self.cap_.get(cv2.CAP_PROP_POS_FRAMES))
+                self.cur_frame_no_ = int(self.cap_.get(cv2.CAP_PROP_POS_FRAMES))
 
         # 動画フレーム画像、フレーム番号を返す（バッチ処理分のリスト）
         return (ret_batch_frame_nos, ret_batch_imgs)
@@ -745,8 +751,11 @@ class MovieLoader:
         return self.num_cap_frame_
 
     def getFrameSize(self) -> Tuple[int,int]:
-        frame_w = int(self.cap_.get(cv2.CAP_PROP_FRAME_WIDTH))
-        frame_h = int(self.cap_.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        frame_w = 0
+        frame_h = 0
+        if self.cap_ is not None:
+            frame_w = int(self.cap_.get(cv2.CAP_PROP_FRAME_WIDTH))
+            frame_h = int(self.cap_.get(cv2.CAP_PROP_FRAME_HEIGHT))
         return (frame_w, frame_h)
 
     def getPlayFps(self) -> float:
@@ -757,12 +766,15 @@ class MovieLoader:
         return
 
     def setCurFrame(self, frame_no:int):
-        self.cur_frame_no_ = frame_no
-        self.cap_.set(cv2.CAP_PROP_POS_FRAMES, float(self.cur_frame_no_))
+        if self.cap_ is not None:
+            self.cur_frame_no_ = frame_no
+            self.cap_.set(cv2.CAP_PROP_POS_FRAMES, float(self.cur_frame_no_))
         return
     
-    def getCurFrame(self) -> Tuple[bool, np.ndarray]:
-        (ret, img) = self.cap_.read()
+    def getCurFrame(self) -> Tuple[bool, np.ndarray|None]:
+        (ret, img) = (False, None)
+        if self.cap_ is not None:
+            (ret, img) = self.cap_.read()
         return (ret, img)
 
     def nextCurFrame(self) -> bool:
@@ -853,7 +865,7 @@ class VocDataSetMng:
 
         return
     
-    def calcAnnoObjInfo(self, phase:str) -> Dict[str,Dict[str,any]]:
+    def calcAnnoObjInfo(self, phase:str) -> Dict[str,Dict[str,Any]]:
         """ アノテーション情報を集計（クラス毎の物体数、平均サイズ）
 
         Args:
@@ -862,12 +874,12 @@ class VocDataSetMng:
         Returns:
             Dict[str,Dict[str,any]]: 集計結果
         """
-        obj_info:Dict[str,any] = {"num":0, "w_ave":0.0, "h_ave":0.0}
+        obj_info:Dict[str,Any] = {"num":0, "w_ave":0.0, "h_ave":0.0}
         objset_info = {}
         for cls_name in self.voc_classes_:
             objset_info[cls_name] = copy.deepcopy(obj_info)
 
-        target_dataset:VOCDataset = None
+        target_dataset:VOCDataset|None = None
 
         if phase == "train":
             target_dataset = self.train_dataset_
@@ -1079,7 +1091,7 @@ def evaluate_map(predictions:Dict[str,List], ground_truths:Dict[str,List], class
         # print(f"recalls={recalls}")
 
     # mAP算出
-    mAP = np.mean(aps)
+    mAP = float(np.mean(aps))
 
     return mAP, aps
 
@@ -1104,7 +1116,7 @@ class CalcMAP:
         self.iou_thres_     = iou_thres
         return
     
-    def add(self, img_fpath:str, det_results:List[DetResult], anno_data:List[AnnoData]):
+    def add(self, img_fpath:str, det_results:List[DetResult|None], anno_data:List[AnnoData]):
         """ データ追加
 
         Args:
@@ -1118,7 +1130,8 @@ class CalcMAP:
         anno_data_cp   = copy.deepcopy(anno_data)
 
         for det_result in det_results_cp:
-            self.predictions_[img_fname].append((det_result.bbox_, det_result.score_, det_result.class_name_))
+            if det_result is not None:
+                self.predictions_[img_fname].append((det_result.bbox_, det_result.score_, det_result.class_name_))
 
         for gt in anno_data_cp:
             self.ground_truths_[img_fname].append((gt.bbox_, gt.class_name_))
@@ -1205,7 +1218,7 @@ class Logger:
     def __init__(self, is_out:bool):
         self.is_out_  = is_out
         self.outdir_  = ""
-        self.log_fp_:TextIOWrapper = None
+        self.log_fp_:TextIOWrapper|None = None
         return
 
     @staticmethod
@@ -1241,7 +1254,7 @@ class Logger:
         """
         if self.is_out_ == True:
             self.outdir_ = Logger.createOutputDir(dev_name, net_type, dir_name)
-            self.log_fp_ = open(f"{self.outdir_}/{f_name}", mode)
+            self.log_fp_ = open(f"{self.outdir_}/{f_name}", mode) # type: ignore
         return
 
     def closeLogFile(self):

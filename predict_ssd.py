@@ -101,7 +101,7 @@ class SSDModelDetector(SSDModel):
         (img_trans, _ ,_) = self.transform_(img, "val", "", "")
         return img_trans
     
-    def predict(self, img_procs:List[ImageProc], imgs:List[np.ndarray], conf=0.5, overlap=0.45) -> List[List[DetResult]]:
+    def predict(self, img_procs:List[ImageProc], imgs:List[np.ndarray], conf=0.5, overlap=0.45) -> List[List[DetResult|None]]:
         """ 検知（推論）実行
 
         Args:
@@ -115,7 +115,7 @@ class SSDModelDetector(SSDModel):
         """
         num_img  = len(imgs)
 
-        det_results:List[List[DetResult]] = []
+        det_results:List[List[DetResult|None]] = []
         for img_no in range(num_img):
             det_results.append(list())
 
@@ -181,7 +181,7 @@ class SSDModelDetector(SSDModel):
 
         return det_results
 
-    def predictDetail(self, det_results:List[List[DetResult]], imgs:List[np.ndarray], min_bbox_size:int, num_batch:int, area_class:List[str], conf=0.5, overlap=0.45) -> List[List[DetResult]]:
+    def predictDetail(self, det_results:List[List[DetResult|None]], imgs:List[np.ndarray], min_bbox_size:int, num_batch:int, area_class:List[str], conf=0.5, overlap=0.45) -> List[List[DetResult|None]]:
         """ 検知（推論）実行（検出結果の中を詳細検知）
 
         - 検出結果(area_class)の矩形内に対してSSDモデルの検知を実行
@@ -210,7 +210,9 @@ class SSDModelDetector(SSDModel):
             num_area = 0
             for img_no, img_org in enumerate(imgs):
                 for det_obj in det_results[img_no]:
-                    if det_obj.class_name_ in area_class:
+                    if (det_obj is not None) \
+                        and (det_obj.class_name_ in area_class):
+
                         img_proc = ImageProc()
                         img_proc.initFromDet(img_org, det_obj, min_bbox_size)
                         if img_proc.is_no_proc_ == False:
@@ -294,7 +296,7 @@ class SSDModelDetector(SSDModel):
         return det_results
 
 
-    def nmSuppression(self, det_results:List[DetResult], iou:float=0.45) -> List[DetResult]:
+    def nmSuppression(self, det_results:List[DetResult|None], iou:float=0.45) -> List[DetResult|None]:
         """ 重複枠の削除
         Args:
             det_results (List[DetResult]): 検出結果（処理前）
@@ -305,10 +307,10 @@ class SSDModelDetector(SSDModel):
         """
         #   引数iou以上の重なりがある枠が存在する場合、一番確信度が高い枠のみ残し、それ以外を削除する
         #   異なるクラスの枠同士が重なる場合は対象外
-        det_results_sup:List[DetResult] = []
+        det_results_sup:List[DetResult|None] = []
 
         for cls_name in self.voc_classes_:
-            det_results_cls = [x for x in det_results if x.class_name_ == cls_name]
+            det_results_cls = [x for x in det_results if (x is not None) and (x.class_name_ == cls_name)]
 
             if len(det_results_cls) > 0:
                 bb_i_cls  = torch.from_numpy( np.array([x.bbox_  for x in det_results_cls]) )
@@ -341,8 +343,10 @@ class LogEvalAnno(Logger):
                 self.log_fp_.write("det:is_exist,det:cls,det:bbox,,,,det:bbox_area,det:bbox_size,det:score,det:jaccard\n")
         return
 
-    def writeLog(self, img_fpath:str, anno_data:AnnoData, pos_det:DetResult, jaccard_val:float):
-        if self.isOutputLog() == True:
+    def writeLog(self, img_fpath:str, anno_data:AnnoData, pos_det:DetResult|None, jaccard_val:float):
+        if (self.isOutputLog() == True) \
+            and (self.log_fp_ is not None):
+
             w_line  = f"{img_fpath},"
             w_line += f"{anno_data.class_name_},"
             w_line += f"{int(anno_data.bbox_[0])},{int(anno_data.bbox_[1])},{int(anno_data.bbox_[2])},{int(anno_data.bbox_[3])},"
@@ -391,7 +395,8 @@ def main_play_movie(ssd_model:SSDModelDetector, movie_fpath:str, cfg:Dict[str,An
 
     logger = Logger(True)
     logger.openLogFile(ssd_model.device_.type, ssd_model.net_type_, output_imgdir_name, "log_predict.csv", "w")
-    logger.log_fp_.write(f"frame,fps\n")
+    if logger.log_fp_ is not None:
+        logger.log_fp_.write(f"frame,fps\n")
 
     # 入力動画読み込み
     movie_loader = MovieLoader(movie_fpath, play_fps, num_batch_frame)
@@ -434,8 +439,9 @@ def main_play_movie(ssd_model:SSDModelDetector, movie_fpath:str, cfg:Dict[str,An
                                                         ssd_model.net_type_,
                                                         time_per_frame,
                                                         DrawPen((255,255,255), 2, 0.6))
-                    
-                    logger.log_fp_.write(f"F{batch_frame_no},{(1.0 / time_per_frame):.1f}\n")
+
+                    if logger.log_fp_ is not None:
+                        logger.log_fp_.write(f"F{batch_frame_no},{(1.0 / time_per_frame):.1f}\n")
 
                     # 保存
                     frame_img_fpath = f"{output_imgdir_path}/F{batch_frame_no:05}.jpg" 
@@ -545,7 +551,7 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, cfg:Dict[str,Any
     val_file_all = [os.path.splitext(os.path.basename(f))[0] for f in glob.glob(f"{img_dir}/*.xml")]
     val_file_list = [f for f in val_file_all if parse_anno.isExistObject(f"{img_dir}/{f}.xml") == True]
 
-    calc_map:CalcMAP = None
+    calc_map:CalcMAP|None = None
 
     is_exist_anno = False
     val_img_list  = []
@@ -595,7 +601,8 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, cfg:Dict[str,Any
                 anno_data = getAnnoData(val_anno_list[idx], parse_anno, ssd_model.voc_classes_, img_w, img_h)
                 img_org   = ImageProc.drawAnnoData(img_org, anno_data, DrawPen((128,255,128), 1, 0.4))
 
-                calc_map.add(img_fpath, det_results[0], anno_data)
+                if calc_map is not None:
+                    calc_map.add(img_fpath, det_results[0], anno_data)
 
                 for anno_cur in anno_data:
                     # アノテーションデータの評価結果をログ出力
@@ -617,9 +624,12 @@ def main_play_imageset(ssd_model:SSDModelDetector, img_dir:str, cfg:Dict[str,Any
         if key == ord("q"):
             break        
 
-    if is_exist_anno == True:
+    if (is_exist_anno == True) \
+        and (log_eval_anno.log_fp_ is not None):
+
         # mAP計算
-        mAP, per_class_ap = calc_map()
+        if calc_map is not None:
+            mAP, per_class_ap = calc_map()
 
         log_eval_anno.log_fp_.write(f"\n\n--Config--\n")
         log_eval_anno.log_fp_.write(f"\t conf=,{conf}\n")

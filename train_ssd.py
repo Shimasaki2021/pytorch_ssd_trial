@@ -67,7 +67,8 @@ class SSDModelTrainerDebug(Logger):
             mod_name (str)          : モジュール名
             mod_list (nn.ModuleList): モジュールリスト
         """
-        if self.isOutputLog() == True:
+        if (self.isOutputLog() == True) and (self.log_fp_ is not None):
+
             for idx,module in enumerate(mod_list):
                 self.log_fp_.write(f"[{mod_name}{idx}] {module}")
 
@@ -100,12 +101,13 @@ class SSDModelTrainerDebug(Logger):
         Args:
             net (SSD_vgg): SSDモデル（VGGベース）
         """
-        self.log_fp_.write("\n == net(vgg) ==\n")
-        self.outputLogModuleInfo("vgg",    net.vgg)
-        self.outputLogModuleInfo("extras", net.extras)
-        self.outputLogModuleInfo("loc",    net.loc)
-        self.outputLogModuleInfo("conf",   net.conf)
-        self.log_fp_.write("\n")
+        if self.log_fp_ is not None:
+            self.log_fp_.write("\n == net(vgg) ==\n")
+            self.outputLogModuleInfo("vgg",    net.vgg)
+            self.outputLogModuleInfo("extras", net.extras)
+            self.outputLogModuleInfo("loc",    net.loc)
+            self.outputLogModuleInfo("conf",   net.conf)
+            self.log_fp_.write("\n")
         return
     def outputLogNetInfoSSDmb2(self, net:SSD_mb2):
         """ SSDモデル情報出力（mobilenetベースSSD）
@@ -113,12 +115,13 @@ class SSDModelTrainerDebug(Logger):
         Args:
             net (SSD_mb2): SSDモデル（mobilenetベース）
         """
-        self.log_fp_.write("\n == net(mobile net v2 lite) ==\n")
-        self.outputLogModuleInfo("basenet",                net.base_net)
-        self.outputLogModuleInfo("extras",                 net.extras)
-        self.outputLogModuleInfo("regression_headers",     net.regression_headers)
-        self.outputLogModuleInfo("classification_headers", net.classification_headers)
-        self.log_fp_.write("\n")
+        if self.log_fp_ is not None:
+            self.log_fp_.write("\n == net(mobile net v2 lite) ==\n")
+            self.outputLogModuleInfo("basenet",                net.base_net)
+            self.outputLogModuleInfo("extras",                 net.extras)
+            self.outputLogModuleInfo("regression_headers",     net.regression_headers)
+            self.outputLogModuleInfo("classification_headers", net.classification_headers)
+            self.log_fp_.write("\n")
         return
     
     def outputLogSummary(self,dev_name:str, learn_data_path:str, epoch:int, val_loss:float):
@@ -130,7 +133,9 @@ class SSDModelTrainerDebug(Logger):
             epoch (int)          : epoch数
             val_loss (float)     : パラメータ出力時の損失（val loss）
         """
-        if self.isOutputLog() == True:
+        if (self.isOutputLog() == True) \
+            and (self.log_fp_ is not None):
+
             self.log_fp_.write("\n == summary ==\n")
             self.log_fp_.write(f",device:,,{dev_name}\n")
             self.log_fp_.write(f",learn data:,,{learn_data_path}\n")
@@ -150,7 +155,9 @@ class SSDModelTrainerDebug(Logger):
             train_iter (int)    : iteration数（train）
             val_iter (int)      : iteration数（val）
         """
-        if self.isOutputLog() == True:
+        if (self.isOutputLog() == True) \
+            and (self.log_fp_ is not None):
+
             now     = datetime.datetime.now(self.JST_)
             now_str = now.strftime("%Y%m%d_%H%M%S")
             self.log_fp_.write(f"epoch,{epoch},{time_sec:.4f},sec,train_Loss,{train_loss:.4f},(it:,{train_iter},),val_Loss,{val_loss:.4f},(it:,{val_iter},),{now_str}\n")
@@ -162,7 +169,9 @@ class SSDModelTrainerDebug(Logger):
         Args:
             voc_dataset (VocDataSetMng): 学習データセット
         """
-        if self.isOutputLog() == True:
+        if (self.isOutputLog() == True) \
+            and (self.log_fp_ is not None):
+
             self.log_fp_.write("\n == dataset info ==\n")
             self.log_fp_.write(f"batch_size: train={voc_dataset.batch_size_}, val={voc_dataset.batch_size_val_}\n\n")
 
@@ -190,7 +199,8 @@ class SSDModelTrainerDebug(Logger):
             batch_idx (int)             : バッチindex
         """
         if (self.is_out_ == True) and (epoch <= self.debug_out_max_epoch_):
-            for image_no in range(images.shape[0]):
+            # for image_no in range(images.shape[0]):
+            for image_no in range(len(images)):
                 debug_out_fpath = self.outdir_ + "/epoch" + str(epoch) + "_" + phase + "_b" + str(batch_idx) + "_" + str(image_no) + ".jpg"
                 torchvision.utils.save_image(images[image_no], debug_out_fpath)
         return
@@ -223,7 +233,7 @@ class SSDModelTrainer(SSDModel):
         self.net_.to(device)
 
         # 損失関数の設定
-        self.criterion_ = MultiBoxLoss(jaccard_thresh=0.5, neg_pos=3, device=device)
+        self.criterion_ = MultiBoxLoss(jaccard_thresh=0.5, neg_pos=3, device=str(device))
 
         # 最適化手法の設定
         #self.optimizer_ = optim.SGD(self.net_.parameters(), lr=1e-3, momentum=0.9, weight_decay=5e-4)
@@ -464,7 +474,7 @@ def main(cfg:Dict[str,Any]):
         ssd_model = SSDModelTrainer(device, net_type, weight_fpath, voc_classes, freeze_layer)
     
         # データセット作成
-        voc_dataset = VocDataSetMng(data_path, voc_classes, ssd_model.input_size_, ssd_model.color_mean_, ssd_model.color_std_, batch_size, test_rate)
+        voc_dataset = VocDataSetMng(data_path, voc_classes, ssd_model.input_size_, ssd_model.color_mean_.tolist(), ssd_model.color_std_, batch_size, test_rate)
         for phase in ["train", "val"]:
             for class_name in voc_dataset.voc_classes_:
                 (obj_num, _, _) = voc_dataset.getAnnoInfo(phase, class_name)
